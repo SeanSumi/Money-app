@@ -424,6 +424,7 @@ function fieldHtml(f,v){
   if(f.type==='info')return`<div class="info">${f.html}</div>`;
   if(f.type==='voice')return`<div class="voice"><textarea rows="3" data-voice="1" placeholder="話す・打つ・貼り付け　例：昨日 スーパーで3800円" aria-label="声・文章で入力">${esc((F&&F.voiceText)||'')}</textarea><button class="vb" data-vb="mic" aria-label="音声入力">🎤</button><button class="vb go" data-vb="go">反映</button></div><div class="scanmsg" id="voicemsg"></div>`;
   if(f.type==='paychips')return`<div class="dh" style="margin:0 4px 6px">${esc(f.label)}</div><div class="chips">${f.options.map(o=>`<button data-payk="${f.k}" data-v="${esc(o[0])}" class="${v[f.k]===o[0]?'on':''}">${o[0][0]==='c'?'💳':'🏧'} ${esc(o[1].replace('（カード）',''))}</button>`).join('')}</div>`;
+  if(f.type==='preview')return`<div class="list"><div class="info" id="bulkprev">${f.html}</div></div>`;
   if(f.type==='area')return`<textarea class="area" data-k="${f.k}" rows="7" placeholder="${esc(f.ph||'')}">${esc(v[f.k]||'')}</textarea>`;
   if(f.type==='scan')return`<label class="scan">📷 写真・PDFから自動入力<input type="file" accept="image/*,application/pdf" multiple data-scan="1" style="display:none"></label><div class="scanmsg" id="scanmsg"></div>`;
   if(f.type==='check')return`<div class="f"><label for="ck-${f.k}" style="flex:1;font-size:14px">${esc(f.label)}</label><input id="ck-${f.k}" type="checkbox" data-k="${f.k}" style="flex:none;width:22px;height:22px" ${v[f.k]?'checked':''}></div>`;
@@ -436,7 +437,7 @@ function fieldHtml(f,v){
 function renderSheet(){
   const fs=F.fields(F.vals);let body='',grp='';
   const flush=()=>{if(grp)body+=`<div class="list">${grp}</div>`;grp=''};
-  fs.forEach(f=>{if(f.type==='seg'||f.type==='info'||f.type==='chips'||f.type==='scan'||f.type==='voice'||f.type==='paychips'||f.type==='area'){flush();body+=f.type==='info'?`<div class="list">${fieldHtml(f,F.vals)}</div>`:fieldHtml(f,F.vals)}else grp+=fieldHtml(f,F.vals)});
+  fs.forEach(f=>{if(f.type==='seg'||f.type==='info'||f.type==='chips'||f.type==='scan'||f.type==='voice'||f.type==='paychips'||f.type==='area'||f.type==='preview'){flush();body+=f.type==='info'?`<div class="list">${fieldHtml(f,F.vals)}</div>`:fieldHtml(f,F.vals)}else grp+=fieldHtml(f,F.vals)});
   flush();
   $('#sheet').innerHTML=`<div class="backdrop" data-close="1"></div><div class="sheet" role="dialog" aria-label="${esc(F.title)}"><div class="sh-h"><button data-close="1">キャンセル</button><b>${esc(F.title)}</b><button class="pri" data-save="1">保存</button></div><div class="sh-b">${body}<div class="err" id="err"></div>${F.del?`<button class="btn danger delbtn" data-del="1">削除</button>`:''}</div></div>`;
 }
@@ -518,6 +519,76 @@ function parseCardLine(line){
   const name=t.replace(/[、,:：]/g,' ').replace(/\s+/g,' ').trim().replace(/(の)?(支払い?|払い)$/,'').trim();
   if(!name)return null;
   return{name,closing,payDay,offset};
+}
+function takeYen(t){
+  let m,v=null;
+  if((m=t.match(/(\d+(?:\.\d+)?)\s*万\s*(\d+)\s*千\s*円?/)))v=Math.round(parseFloat(m[1])*10000)+num(m[2])*1000;
+  else if((m=t.match(/(\d+(?:\.\d+)?)\s*万\s*(\d{1,4})?\s*円?/)))v=Math.round(parseFloat(m[1])*10000)+(m[2]?num(m[2]):0);
+  else if((m=t.match(/(\d+)\s*千\s*円?/)))v=num(m[1])*1000;
+  else if((m=t.match(/(\d+)\s*円/)))v=num(m[1]);
+  else if((m=t.match(/(\d{4,})/)))v=num(m[1]);
+  else if((m=t.match(/(?:^|\s)(\d{1,3})(?:\s|$)/)))v=num(m[1]);
+  return v===null?{v:null,t}:{v,t:t.replace(m[0],' ')};
+}
+function cleanAssetName(t,dflt){
+  const n=t.replace(/残高|現在の?|残り|借入れ?|借り入れ|返済額?|年利|金利|です|あります|ある/g,' ').replace(/[、,:：]/g,' ').replace(/\s+/g,' ').trim().replace(/^[でにをはがとの\s]+|[でにをはがとの\s]+$/g,'').slice(0,24);
+  return n||dflt;
+}
+function parseAssetLine(line){
+  let t=normSpeech(line).replace(/[　]/g,' ').trim();if(!t)return null;
+  const orig=t;let m;
+  if(/締/.test(t)){const c=parseCardLine(t);return c?Object.assign({kind:'card'},c):{kind:'bad',text:String(line).trim()}}
+  let rate=null,payDay=null,monthly=null;
+  if((m=t.match(/(?:年利|金利)\s*([\d.]+)\s*[%％]?/))){rate=parseFloat(m[1]);t=t.replace(m[0],' ')}
+  else if((m=t.match(/([\d.]+)\s*[%％]/))){rate=parseFloat(m[1]);t=t.replace(m[0],' ')}
+  if((m=t.match(/(?:毎月|月々)?\s*(\d{1,2})\s*日\s*(?:払い?|支払い?|返済|引き?落とし?|引落)?/))){payDay=num(m[1]);t=t.replace(m[0],' ')}
+  if((m=t.match(/(?:月々|毎月|月)\s*(?:の)?\s*(?:返済(?:額)?)?\s*([\d.]+\s*万?\s*\d*\s*千?\s*円?)/))){const y=takeYen(m[1]);if(y.v!==null){monthly=y.v;t=t.replace(m[0],' ')}}
+  if(/ローン|借入|借り入れ|返済|奨学金/.test(orig)||rate!==null||monthly!==null){
+    const y=takeYen(t);if(!(y.v>0))return{kind:'bad',text:String(line).trim()};
+    return{kind:'loan',name:cleanAssetName(y.t,'ローン'),balance:y.v,rate,monthly,payDay};
+  }
+  if(/カード|クレカ|クレジット/.test(orig))return{kind:'bad',text:String(line).trim()};
+  const y=takeYen(t);if(y.v===null)return{kind:'bad',text:String(line).trim()};
+  return{kind:'account',name:cleanAssetName(y.t,'口座'),balance:y.v};
+}
+function describeAsset(x){
+  if(x.kind==='account')return`🏧 口座「${esc(x.name)}」残高 ${yen(x.balance)}`;
+  if(x.kind==='card')return`💳 カード「${esc(x.name)}」${cardRule(x)}`;
+  if(x.kind==='loan')return`🏦 ローン「${esc(x.name)}」残高 ${yen(x.balance)}${x.rate!=null?'・年利'+x.rate+'%':''}${x.monthly?'・月'+yen(x.monthly):''}${x.payDay?'・'+x.payDay+'日払い':''}`;
+  return`❓ 読み取れません：${esc(x.text)}`;
+}
+function openAssetBulk(){
+  const norm=x=>String(x).replace(/\s+/g,'').toLowerCase();
+  const parse=txt=>String(txt||'').split(/\n/).map(parseAssetLine).filter(Boolean);
+  const preview=v=>{const it=parse(v.text);return it.length?it.map(describeAsset).join('<br>'):'入力すると、ここに読み取り結果が出ます。'};
+  openForm({title:'まとめて登録',vals:{text:'',acc:S.accounts[0]&&S.accounts[0].id},
+    onInput:v=>{const e=$('#bulkprev');if(e)e.innerHTML=preview(v)},
+    fields:v=>[{type:'info',html:'1行に1件、自由な文章で書けます。銀行・ローン・クレジットカードを、種類を見分けて登録します。<br>例：<br><b>三井住友銀行 残高50万円</b><br><b>自動車ローン 残高180万円 年利3.5% 月4万円 27日払い</b><br><b>AMEXカード 7日締め26日払い</b><br>同じ名前があれば、内容を上書きします。'},
+      {type:'area',k:'text',ph:'ここに入力・貼り付け'},
+      {type:'preview',html:preview(v)},
+      {k:'acc',label:'カード・ローンの引き落とし口座',type:'select',options:accOpts()}],
+    save:v=>{
+      const items=parse(v.text).filter(x=>x.kind!=='bad');
+      if(!items.length)return'読み取れる行がありません。例のように書いてみてください';
+      const needsAcc=items.some(x=>x.kind==='card'||x.kind==='loan');
+      if(needsAcc&&!v.acc&&!S.accounts.length&&!items.some(x=>x.kind==='account'))return'カードやローンには、引き落とし口座が必要です。口座の行も一緒に書いてください';
+      items.filter(x=>x.kind==='account').forEach(x=>{
+        const ex=S.accounts.find(a=>norm(a.name)===norm(x.name));
+        if(ex)ex.opening=x.balance-accBal(ex,true);else S.accounts.push({id:uid('a'),name:x.name,opening:x.balance});
+      });
+      const acc=v.acc||(S.accounts[0]&&S.accounts[0].id);
+      items.filter(x=>x.kind==='card').forEach(c=>{
+        const ex=S.cards.find(x=>norm(x.name)===norm(c.name));
+        if(ex)Object.assign(ex,{closing:c.closing,payDay:c.payDay,offset:c.offset});
+        else S.cards.push({id:uid('c'),name:c.name,closing:c.closing,payDay:c.payDay,offset:c.offset,acc});
+      });
+      items.filter(x=>x.kind==='loan').forEach(x=>{
+        const ex=S.loans.find(l=>norm(l.name)===norm(x.name));
+        const o={name:x.name,rate:x.rate==null?(ex?ex.rate:0):x.rate,monthly:x.monthly==null?(ex?ex.monthly:0):x.monthly,payDay:x.payDay||(ex&&ex.payDay)||27,acc};
+        if(ex){Object.assign(ex,o);if(Math.round(x.balance)!==Math.round(loanState(ex).bal)){ex.bal0=x.balance;ex.asOf=today();ex.last=ymOf(today())}}
+        else S.loans.push({id:uid('l'),bal0:x.balance,asOf:today(),last:ymOf(today()),...o});
+      });
+      tab='assets'}});
 }
 function openCardBulk(){
   const norm=x=>String(x).replace(/\s+/g,'').toLowerCase();
@@ -791,7 +862,7 @@ function openChooser(){
   <button class="bigbtn" data-a="newtxn:manual"><span class="bi">✍️</span><span>手入力<small>金額やカテゴリを自分で入れる</small></span></button>
   <label class="bigbtn"><span class="bi">📷</span><span>写真・PDF<small>レシートや明細を撮る・選ぶと自動入力</small></span><input type="file" accept="image/*,application/pdf" multiple data-chscan="1" style="display:none"></label>
   <button class="bigbtn" data-a="newtxn:voice"><span class="bi">🎤</span><span>声・文章<small>「昨日 スーパーで3800円」と話す・打つ</small></span></button>
-  <div class="dh">そのほかの入力（手入力）</div><div class="list">${row('acc','🏧','口座を追加')}${row('card','💳','カードを追加')}${row('cardbulk','💳','カードの締め日・支払日をまとめて登録')}${row('loan','🏦','ローンを追加')}${row('rec','📌','毎月の固定（給料・家賃など）を追加')}${row('budget','🎯','予算を設定')}</div>`;
+  <div class="dh">そのほかの入力（手入力）</div><div class="list">${row('acc','🏧','口座を追加')}${row('card','💳','カードを追加')}${row('cardbulk','💬','口座・カード・ローンをまとめて登録（文章でOK）')}${row('loan','🏦','ローンを追加')}${row('rec','📌','毎月の固定（給料・家賃など）を追加')}${row('budget','🎯','予算を設定')}</div>`;
   }else{
     h+=`<div class="dh" style="margin-top:0">はじめに、口座を追加しましょう</div><div class="list">${row('acc','🏧','口座を追加（いまの残高を入力）')}</div><div class="note">口座を追加すると、取引の記録（手入力・写真・声）や、カード・ローンなどの入力が使えるようになります。</div>`;
   }
@@ -829,7 +900,7 @@ document.addEventListener('click',e=>{
   else if(a==='pf'){pf=arg;render()}
   else if(a==='choose')openChooser();
   else if(a==='closech')closeForm();
-  else if(a==='chopen'){closeForm();({acc:openAcc,card:openCard,cardbulk:openCardBulk,loan:openLoan,rec:openRec})[arg]?({acc:openAcc,card:openCard,cardbulk:openCardBulk,loan:openLoan,rec:openRec})[arg](null):openBudget()}
+  else if(a==='chopen'){closeForm();({acc:openAcc,card:openCard,cardbulk:openAssetBulk,loan:openLoan,rec:openRec})[arg]?({acc:openAcc,card:openCard,cardbulk:openAssetBulk,loan:openLoan,rec:openRec})[arg](null):openBudget()}
   else if(a==='newtxn'){closeForm();openTxn(null,arg);if(arg==='voice')focusVoice()}
   else if(a==='txn')openTxn(arg==='new'?null:arg);
   else if(a==='acc')openAcc(arg==='new'?null:arg);
@@ -856,7 +927,7 @@ document.addEventListener('click',e=>{
 });
 document.addEventListener('input',e=>{
   const el=e.target;
-  if(F&&el.dataset.k){F.vals[el.dataset.k]=el.type==='checkbox'?el.checked:el.value}
+  if(F&&el.dataset.k){F.vals[el.dataset.k]=el.type==='checkbox'?el.checked:el.value;if(F.onInput)F.onInput(F.vals)}
   else if(F&&el.dataset.voice!=null){F.voiceText=el.value}
   else if(el.dataset.apikey!=null){try{localStorage.setItem(KEYLS,el.value.trim())}catch(err){}}
   else if(el.dataset.cat){const c=S.cats.find(x=>x.id===el.dataset.cat);if(c){c.name=el.value;save()}}
@@ -874,8 +945,6 @@ document.addEventListener('change',e=>{
   }
 });
 initStore();
-
-if('serviceWorker' in navigator){window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').catch(()=>{})})}
 </script>
 </body>
 </html>
