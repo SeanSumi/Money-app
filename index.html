@@ -857,6 +857,8 @@ function parseVoiceSeg(seg,dflt){
   if(!(amount>0))return{date:ed.date,item:null};
   const type=/給料|給与|ボーナス|賞与|もらった|もらい|入金|収入|振り込まれ|お小遣い|バイト代|返金/.test(seg)?'income':'expense';
   let name=t.replace(/使った|つかった|払った|はらった|支払った|買った|かった|かかった|もらった|入った|入金|でした|です|だった|決済|円/g,' ').replace(/\s+/g,' ').trim();
+  const pmx=payMatch(seg)[1];if(pmx)name=name.replace(pmx,' ');
+  name=name.replace(DEBIT_RE,' ').replace(/から/g,' ').replace(/\s+/g,' ').trim().replace(/支払い?$/,'');
   name=name.replace(/^[でにをはがとの、。\s]+|[でにをはがと、。\s]+$/g,'').slice(0,20);
   return{date:ed.date,item:{date:ed.date||dflt||today(),amount,type,name,cat:type==='income'?null:voiceCat(seg),tags}};
 }
@@ -866,9 +868,17 @@ function parseVoice(text){
   segs.forEach(sg=>{const r=parseVoiceSeg(sg,d);if(r.item){out.push(r.item);d=r.item.date}else if(r.date)d=r.date});
   return out;
 }
+const DEBIT_RE=/引き?落とし?|引落|振り?落とし?|振替|口座から/;
+function payMatch(text){
+  const t=String(text||'');let opts=payOpts().slice().sort((a,b)=>b[1].length-a[1].length);
+  if(DEBIT_RE.test(t)){const ac=opts.filter(o=>o[0][0]==='a');if(ac.length)opts=ac}
+  for(const o of opts){const nm=o[1].replace('（カード）','');if(nm&&t.includes(nm))return[o[0],nm]}
+  const toks=t.split(/[\s、。,　]+/).filter(w=>w.length>=3&&!/^[\d\/\-:.,円]+$/.test(w));
+  for(const w of toks)for(const o of opts){const nm=o[1].replace('（カード）','');if(nm.includes(w))return[o[0],w]}
+  return[null,''];
+}
 function voicePay(text){
-  const t=String(text||''),opts=payOpts().slice().sort((a,b)=>b[1].length-a[1].length);
-  for(const o of opts){const nm=o[1].replace('（カード）','');if(nm&&t.includes(nm))return o[0]}
+  const t=String(text||''),pm=payMatch(t);if(pm[0])return pm[0];
   if(/カード|クレジット/.test(t)&&S.cards.length===1)return 'c:'+S.cards[0].id;
   return null;
 }
