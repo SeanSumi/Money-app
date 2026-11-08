@@ -267,28 +267,6 @@ async function initStore(){
   }catch(e){doc=null;setStatus('local')}
 }
 
-/* ===== サンプル ===== */
-function sample(){
-  S=empty();const t=today(),cur=ymOf(t),start=addM(cur,-3);
-  S.accounts=[{id:'a1',name:'普通預金',opening:420000},{id:'a2',name:'貯蓄・投資',opening:1500000}];
-  S.cards=[{id:'c1',name:'メインカード',closing:15,payDay:10,offset:1,acc:'a1'}];
-  S.loans=[{id:'l1',name:'自動車ローン',bal0:1800000,asOf:dayStr(start,1),rate:3.5,monthly:40000,payDay:27,acc:'a1'}];
-  S.recs=[{id:'r1',type:'income',name:'給料',amount:285000,day:25,acc:'a1',startYm:start},
-          {id:'r2',type:'expense',name:'家賃',amount:90000,day:27,cat:'e1',acc:'a1',startYm:start},
-          {id:'r3',type:'expense',name:'スマホ・ネット',amount:9800,day:5,cat:'e3',card:'c1',startYm:start}];
-  S.budgets={e1:90000,e2:45000,e3:25000,e4:10000,e5:8000,e6:25000,e7:15000};
-  const memos=[['e2','スーパー',3800],['e2','コンビニ',650],['e2','ランチ',1100],['e4','電車',1200],['e5','ドラッグストア',2400],['e6','飲み会',5200],['e2','カフェ',620],['e7','書籍',1800]];
-  for(let mi=0;mi<4;mi++){
-    const m=addM(start,mi);
-    for(let i=0;i<22;i++){
-      const mm=memos[(i+mi)%memos.length],d=dayStr(m,1+i);
-      if(d>t)break;
-      S.txns.push({id:uid('t'),date:d,type:'expense',amount:mm[2]+((i*137)%900),cat:mm[0],acc:i%3?null:'a1',card:i%3?'c1':null,memo:mm[1]});
-    }
-  }
-  gen();save();
-}
-
 /* ===== 画面 ===== */
 function render(){
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===tab));
@@ -300,7 +278,7 @@ const head=(t,sub)=>`<div class="title"><h1>${t} ${TI[t]||''}</h1><div class="rt
 function onboarding(){
   return head('マネー管理')+`<div class="empty"><div style="font-size:40px">👛</div><h3 style="margin:6px 0">はじめましょう</h3>
   <ol class="steps"><li>口座を追加（今の残高を入力）</li><li>カード・ローンがあれば追加（任意）</li><li>使ったお金・もらったお金を記録</li></ol>
-  <div class="btns"><button class="btn" data-a="acc:new">口座を追加する</button><button class="btn sec2" data-a="sample">サンプルで試す</button></div></div>`;
+  <div class="btns"><button class="btn" data-a="acc:new">口座を追加する</button></div></div>`;
 }
 function homeV(){
   if(!S.accounts.length)return onboarding();
@@ -427,7 +405,6 @@ function settingsV(){
   <div class="sec">データ</div><div class="list">
   <button class="li" data-a="export"><span>データをコピー（バックアップ）</span></button>
   <button class="li" data-a="import"><span>バックアップから復元（貼り付け）</span></button>
-  <button class="li" data-a="sample"><span>サンプルデータを読み込む</span></button>
   <button class="li" data-a="wipe"><span class="neg">すべてのデータを削除</span></button></div>
   <div class="sec">AI読み取り（写真・PDF）</div><div class="list"><div class="catrow"><span>APIキー</span><input type="password" data-apikey="1" value="${esc(getKey())}" placeholder="単体アプリで使う場合のみ" autocomplete="off" aria-label="APIキー"></div></div>
   <div class="note">Claude内のアプリでは不要です。ホーム画面に入れた単体アプリで使う場合だけ、ご自分のAnthropic APIキーを入れてください。キーはこの端末にだけ保存され、バックアップには含まれません。利用料はAPI側で発生します。</div>
@@ -801,9 +778,6 @@ document.addEventListener('click',e=>{
     if(!el.dataset.ok){el.dataset.ok=1;el.textContent='本当に？';return}
     if(S.txns.some(x=>x.cat===arg)||S.recs.some(r=>r.cat===arg)){$('#msg').textContent='このカテゴリの取引があるため削除できません';return}
     S.cats=S.cats.filter(c=>c.id!==arg);delete S.budgets[arg];save();render()}
-  else if(a==='sample'){
-    if(S.accounts.length&&!el.dataset.ok){el.dataset.ok=1;el.querySelector('span')&&(el.querySelector('span').textContent='いまのデータが置き換わります。もう一度タップ');return}
-    sample();tab='home';mon=ymOf(today());render()}
   else if(a==='wipe'){
     if(!el.dataset.ok){el.dataset.ok=1;el.firstChild.textContent='本当に削除しますか？もう一度タップ';return}
     S=empty();save();tab='home';render()}
