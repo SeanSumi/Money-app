@@ -418,6 +418,7 @@ function fieldHtml(f,v){
   if(f.type==='seg')return`<div class="seg">${f.options.map(o=>`<button data-seg="${f.k}" data-v="${o[0]}" class="${v[f.k]===o[0]?'on':''}">${o[1]}</button>`).join('')}</div>`;
   if(f.type==='info')return`<div class="info">${f.html}</div>`;
   if(f.type==='voice')return`<div class="voice"><input type="text" data-voice="1" value="${esc((F&&F.voiceText)||'')}" placeholder="話す／打つ　例：昨日 スーパーで3800円" aria-label="声・文章で入力"><button class="vb" data-vb="mic" aria-label="音声入力">🎤</button><button class="vb go" data-vb="go">反映</button></div><div class="scanmsg" id="voicemsg"></div>`;
+  if(f.type==='paychips')return`<div class="dh" style="margin:0 4px 6px">${esc(f.label)}</div><div class="chips">${f.options.map(o=>`<button data-payk="${f.k}" data-v="${esc(o[0])}" class="${v[f.k]===o[0]?'on':''}">${o[0][0]==='c'?'💳':'🏧'} ${esc(o[1].replace('（カード）',''))}</button>`).join('')}</div>`;
   if(f.type==='scan')return`<label class="scan">📷 写真・PDFから自動入力<input type="file" accept="image/*,application/pdf" multiple data-scan="1" style="display:none"></label><div class="scanmsg" id="scanmsg"></div>`;
   if(f.type==='check')return`<div class="f"><label for="ck-${f.k}" style="flex:1;font-size:14px">${esc(f.label)}</label><input id="ck-${f.k}" type="checkbox" data-k="${f.k}" style="flex:none;width:22px;height:22px" ${v[f.k]?'checked':''}></div>`;
   if(f.type==='chips')return`<div class="chips">${f.tags.map(t=>`<button data-tag="${esc(t)}" class="${f.sel.includes(t)?'on':''}">#${esc(t)}</button>`).join('')}</div>`;
@@ -429,7 +430,7 @@ function fieldHtml(f,v){
 function renderSheet(){
   const fs=F.fields(F.vals);let body='',grp='';
   const flush=()=>{if(grp)body+=`<div class="list">${grp}</div>`;grp=''};
-  fs.forEach(f=>{if(f.type==='seg'||f.type==='info'||f.type==='chips'||f.type==='scan'||f.type==='voice'){flush();body+=f.type==='info'?`<div class="list">${fieldHtml(f,F.vals)}</div>`:fieldHtml(f,F.vals)}else grp+=fieldHtml(f,F.vals)});
+  fs.forEach(f=>{if(f.type==='seg'||f.type==='info'||f.type==='chips'||f.type==='scan'||f.type==='voice'||f.type==='paychips'){flush();body+=f.type==='info'?`<div class="list">${fieldHtml(f,F.vals)}</div>`:fieldHtml(f,F.vals)}else grp+=fieldHtml(f,F.vals)});
   flush();
   $('#sheet').innerHTML=`<div class="backdrop" data-close="1"></div><div class="sheet" role="dialog" aria-label="${esc(F.title)}"><div class="sh-h"><button data-close="1">キャンセル</button><b>${esc(F.title)}</b><button class="pri" data-save="1">保存</button></div><div class="sh-b">${body}<div class="err" id="err"></div>${F.del?`<button class="btn danger delbtn" data-del="1">削除</button>`:''}</div></div>`;
 }
@@ -451,10 +452,11 @@ function openTxn(id,mode){
       }
       if(v.type==='expense'){f.push({k:'cat',label:'カテゴリ',type:'select',options:[...S.cats.map(c=>[c.id,catIcon(c.id)+' '+c.name]),['__new','＋ 新しいカテゴリ…']]});
         if(v.cat==='__new')f.push({k:'newicon',label:'アイコン（絵文字）',type:'text',ph:'🏷️'},{k:'newcat',label:'カテゴリ名',type:'text',ph:'例：ペット'});
-        f.push({k:'pay',label:'支払い方法',type:'select',options:payOpts()})}
-      else if(v.type==='income')f.push({k:'pay',label:'入金先',type:'select',options:accOpts().map(o=>['a:'+o[0],o[1]])});
+        f.push({k:'pay',label:'支払い方法（口座・カード）',type:'paychips',options:payOpts()})}
+      else if(v.type==='income'){if(String(v.pay||'')[0]!=='a'&&S.accounts[0])v.pay='a:'+S.accounts[0].id;f.push({k:'pay',label:'入金先の口座',type:'paychips',options:accOpts().map(o=>['a:'+o[0],o[1]])})}
       else{
-        f.push({k:'loan',label:'ローン',type:'select',options:S.loans.map(l=>[l.id,l.name])},{k:'pay',label:'引き落とし口座',type:'select',options:accOpts().map(o=>['a:'+o[0],o[1]])});
+        if(String(v.pay||'')[0]!=='a'&&S.accounts[0])v.pay='a:'+S.accounts[0].id;
+        f.push({k:'loan',label:'ローン',type:'select',options:S.loans.map(l=>[l.id,l.name])},{k:'pay',label:'引き落とし口座',type:'paychips',options:accOpts().map(o=>['a:'+o[0],o[1]])});
       }
       f.push({k:'date',label:'日付',type:'date'},{k:'memo',label:'メモ',type:'text',ph:'任意'});
       if(v.type!=='loanpay'){f.push({k:'tags',label:'タグ',type:'text',ph:'#旅行 #仕事'});const at=allTags();if(at.length)f.push({type:'chips',tags:at.slice(0,24).map(x=>x.t),sel:parseTags(v.tags)})}
@@ -603,16 +605,24 @@ function parseVoice(text){
   segs.forEach(sg=>{const r=parseVoiceSeg(sg,d);if(r.item){out.push(r.item);d=r.item.date}else if(r.date)d=r.date});
   return out;
 }
+function voicePay(text){
+  const t=String(text||''),opts=payOpts().slice().sort((a,b)=>b[1].length-a[1].length);
+  for(const o of opts){const nm=o[1].replace('（カード）','');if(nm&&t.includes(nm))return o[0]}
+  if(/カード|クレジット/.test(t)&&S.cards.length===1)return 'c:'+S.cards[0].id;
+  return null;
+}
 function voiceMsg(t,bad){const e=$('#voicemsg');if(e){e.textContent=t;e.className='scanmsg'+(bad?' bad':'')}}
 function applyVoice(text){
   text=String(text||'').trim();
   if(!text){voiceMsg('話すか文章を入れてください。キーボードのマイク🎤でも話せます。',1);return}
   const items=parseVoice(text);
   if(!items.length){voiceMsg('金額が聞き取れませんでした。「昨日 スーパーで3800円」のように話してみてください。',1);return}
-  if(items.length>1||!(F&&F.vals&&'memo' in F.vals)){closeForm();openScanReview(items);return}
+  const vp=voicePay(text);
+  if(items.length>1||!(F&&F.vals&&'memo' in F.vals)){closeForm();openScanReview(items,vp);return}
   const it=items[0];
   Object.assign(F.vals,{type:it.type,amount:it.amount,date:it.date,memo:it.name,tags:tagStr(it.tags)});
   if(it.type==='expense'&&it.cat)F.vals.cat=it.cat;
+  if(vp&&(it.type==='expense'||vp[0]==='a'))F.vals.pay=vp;
   if(it.type==='income'&&String(F.vals.pay||'')[0]!=='a'&&S.accounts[0])F.vals.pay='a:'+S.accounts[0].id;
   F.voiceText=text;renderSheet();voiceMsg('反映しました。内容を確認して保存してください。');
 }
@@ -708,8 +718,8 @@ async function handleScan(files){
     scanMsg(c==='nokey'?'この単体アプリでは、設定にAPIキーを入れると使えます（Claude内のアプリではそのまま使えます）。':c==='noimg'?'この環境では画像の読み取りができません。':c==='rate_limited'?'混み合っています。少し待ってからもう一度お試しください。':c==='not_granted'?'読み取りの許可がありません。':c==='http'?'読み取りに失敗しました（APIキーや通信を確認してください: '+e.status+'）。':'読み取りに失敗しました。PDFの場合は、画面のスクリーンショットでもお試しください。',1);
   }finally{scanning=false}
 }
-function openScanReview(items){
-  const v={pay:(payOpts()[0]||[''])[0]};items.forEach((_,i)=>v['i'+i]=true);
+function openScanReview(items,pay){
+  const v={pay:(pay&&payOpts().some(o=>o[0]===pay))?pay:(payOpts()[0]||[''])[0]};items.forEach((_,i)=>v['i'+i]=true);
   openForm({title:'読み取り結果（'+items.length+'件）',vals:v,
     fields:()=>[{k:'pay',label:'支払い方法・入金先',type:'select',options:payOpts()},
       ...items.map((it,i)=>({type:'check',k:'i'+i,label:`${mdLabel(it.date)}　${it.name||'（名称なし）'}　${yen(it.amount)}${it.type==='income'?'（収入）':'　'+catName(it.cat)}`})),
@@ -752,7 +762,8 @@ document.addEventListener('click',e=>{
   const sh=e.target.closest('#sheet');
   if(sh&&F){
     const b=e.target.closest('button');if(!b&&!e.target.dataset.close)return;
-    const el=e.target.closest('[data-close],[data-save],[data-del],[data-seg],[data-tag],[data-vb]');if(!el)return;
+    const el=e.target.closest('[data-close],[data-save],[data-del],[data-seg],[data-tag],[data-vb],[data-payk]');if(!el)return;
+    if(el.dataset.payk){F.vals[el.dataset.payk]=el.dataset.v;renderSheet();return}
     if(el.dataset.vb){if(el.dataset.vb==='mic')startMic();else applyVoice((F&&F.voiceText)||'');return}
     if(el.dataset.tag){const ts=parseTags(F.vals.tags),k=ts.indexOf(el.dataset.tag);if(k>=0)ts.splice(k,1);else ts.push(el.dataset.tag);F.vals.tags=tagStr(ts);renderSheet();return}
     if(el.dataset.close){closeForm();return}
