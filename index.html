@@ -179,7 +179,7 @@ const WD=['日','月','火','水','木','金','土'];
 const dLabel=d=>{const[y,m,dd]=d.split('-').map(Number);return m+'月'+dd+'日（'+WD[new Date(y,m-1,dd).getDay()]+'）'};
 
 function empty(){return{v:2,accounts:[],cards:[],loans:[],recs:[],txns:[],budgets:{},
-  cats:[{id:'e1',name:'住居'},{id:'e2',name:'食費'},{id:'e3',name:'光熱・通信'},{id:'e4',name:'交通'},{id:'e5',name:'日用品'},{id:'e6',name:'娯楽・交際'},{id:'e7',name:'その他'}]}}
+  cats:[{id:'e1',name:'住居'},{id:'e2',name:'食費'},{id:'e3',name:'光熱・通信'},{id:'e4',name:'交通'},{id:'e5',name:'日用品'},{id:'e6',name:'娯楽・交際'},{id:'e8',name:'維持費',icon:'🔧'},{id:'e7',name:'その他'}],mig8:1}}
 let S=empty(),tab='home',mon=ymOf(today()),F=null,pf='all',tf='';
 
 /* ===== 計算 ===== */
@@ -228,7 +228,7 @@ const parseTags=str=>{const o=[];String(str||'').split(/[\s,、#＃:：]+/).forE
 const tagStr=a=>(a||[]).map(t=>'#'+t).join(' ');
 function allTags(){const m={};S.txns.forEach(x=>(x.tags||[]).forEach(t=>m[t]=(m[t]||0)+1));S.recs.forEach(r=>(r.tags||[]).forEach(t=>{if(!m[t])m[t]=0}));return Object.keys(m).map(t=>({t,n:m[t]})).sort((a,b)=>b.n-a.n||(a.t<b.t?-1:1))}
 const KICON={income:'💰',card:'💳',loan:'🏦',fixed:'📌',other:'👛'};
-const TI={'ホーム':'🏡','取引':'🧾','収支':'💸','予算':'🎯','資産':'💎','設定':'⚙️','マネー管理':'👛'};
+const TI={'円グラフ':'🥧','ホーム':'🏡','取引':'🧾','収支':'💸','予算':'🎯','資産':'💎','設定':'⚙️','マネー管理':'👛'};
 const cardRule=c=>(num(c.closing)?num(c.closing)+'日締め':'月末締め')+'・'+['当月','翌月','翌々月'][c.offset==null?1:num(c.offset)]+(num(c.payDay)||27)+'日払い';
 const cardPayName=c=>c.name.includes('カード')?c.name:c.name+'カード';
 const isLoanName=n=>/ローン|借入|借り入れ|奨学金/.test(String(n||''));
@@ -289,10 +289,40 @@ async function initStore(){
 }
 
 /* ===== 画面 ===== */
+function ensureCats(){
+  if(S.mig8)return;S.mig8=1;
+  if(!S.cats.some(c=>c.name==='維持費'))S.cats.splice(Math.max(0,S.cats.length-1),0,{id:'e8',name:'維持費',icon:'🔧'});
+  save();
+}
+const PIEC=['#2f6fed','#5fa0ff','#1fb5a8','#f5a524','#e5566d','#8b6cf0','#41c27a','#e07b39','#4cc9f0','#9aa7bd'];
+function catTotals(m){const o={};S.txns.forEach(x=>{if(x.type==='expense'&&ymOf(x.date)===m)o[x.cat]=(o[x.cat]||0)+x.amount});return o}
+function pieSvg(rows,total){
+  const R=80,C=100,r=48;let a0=-Math.PI/2,g='';
+  if(rows.length===1)g=`<circle cx="${C}" cy="${C}" r="${(R+r)/2}" fill="none" stroke="${rows[0].color}" stroke-width="${R-r}"/>`;
+  else rows.forEach(w=>{const a1=a0+w.amt/total*2*Math.PI,lg=a1-a0>Math.PI?1:0;
+    const P=(rad,a)=>(C+rad*Math.cos(a)).toFixed(2)+' '+(C+rad*Math.sin(a)).toFixed(2);
+    g+=`<path d="M${P(R,a0)} A${R} ${R} 0 ${lg} 1 ${P(R,a1)} L${P(r,a1)} A${r} ${r} 0 ${lg} 0 ${P(r,a0)} Z" fill="${w.color}" stroke="#fff" stroke-width="1"/>`;a0=a1});
+  return`<svg viewBox="0 0 200 200" style="width:230px;max-width:70%;display:block;margin:6px auto" role="img" aria-label="カテゴリ別の支出の円グラフ">${g}<text x="100" y="95" text-anchor="middle" font-size="11" fill="#7b8794">支出合計</text><text x="100" y="115" text-anchor="middle" font-size="15" font-weight="700" fill="currentColor">${yen(total)}</text></svg>`;
+}
+function chartV(){
+  const cur=catTotals(mon),prv=catTotals(addM(mon,-1));
+  let rows=Object.keys(cur).map(id=>({id,name:catName(id),icon:catIcon(id),amt:cur[id],prev:prv[id]||0})).sort((a,b)=>b.amt-a.amt);
+  if(rows.length>10){const rest=rows.slice(9);rows=rows.slice(0,9);rows.push({id:'_',name:'その他（'+rest.length+'件）',icon:'📦',amt:rest.reduce((a,x)=>a+x.amt,0),prev:rest.reduce((a,x)=>a+x.prev,0)})}
+  rows.forEach((w,i)=>w.color=PIEC[i%PIEC.length]);
+  const total=rows.reduce((a,x)=>a+x.amt,0),ptot=Object.values(prv).reduce((a,x)=>a+x,0);
+  let h=head('円グラフ',ymLabel(mon))+`<button class="btn" data-a="tab:txns" style="margin-bottom:10px">‹ 取引に戻る</button><div class="mnav"><button class="ib" data-a="mon:-1" aria-label="前の月">‹</button><b>${ymLabel(mon)}</b><button class="ib" data-a="mon:1" aria-label="次の月">›</button></div>`;
+  if(!total)return h+`<div class="empty"><p>この月の支出はありません</p></div>`;
+  const d=total-ptot;
+  h+=`<div class="list" style="padding:6px 0">${pieSvg(rows,total)}</div>
+  <div class="list"><div class="li"><span class="mute">前の月（${ymLabel(addM(mon,-1))}）</span><b>${yen(ptot)}</b></div><div class="li"><span class="mute">前の月との差</span><b class="${d>0?'neg':'pos'}">${d>0?'+':d<0?'−':''}${yen(Math.abs(d))}</b></div></div>
+  <div class="sec">カテゴリ別（前の月との差）</div><div class="list">${rows.map(w=>{const df=w.amt-w.prev;return`<div class="li"><span class="ic" style="background:${w.color}22"><i style="display:inline-block;width:10px;height:10px;border-radius:5px;background:${w.color}"></i></span><div class="l"><div class="t">${esc(w.icon)} ${esc(w.name)}</div><div class="s">${Math.round(w.amt/total*100)}% ・ 前月 ${yen(w.prev)}</div></div><div class="r">${yen(w.amt)}<div class="s" style="color:${df>0?'var(--warn)':'var(--mute)'}">${df===0?'±0':(df>0?'▲ +':'▼ −')+yen(Math.abs(df))}</div></div></div>`}).join('')}</div>`;
+  return h;
+}
 function render(){
+  ensureCats();
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===tab));
   $('#fab').style.display='';
-  $('#view').innerHTML=({home:homeV,txns:txnsV,pay:payV,budget:budgetV,assets:assetsV,settings:settingsV})[tab]();
+  $('#view').innerHTML=({home:homeV,txns:txnsV,pay:payV,budget:budgetV,assets:assetsV,settings:settingsV,chart:chartV})[tab]();
 }
 const head=(t,sub)=>`<div class="title"><h1>${t} ${TI[t]||''}</h1><div class="rt"><small>${sub||''}</small>${tab==='settings'?'':'<button class="gear" data-a="tab:settings" aria-label="設定">⚙︎</button>'}</div></div>`;
 
@@ -316,7 +346,7 @@ function homeV(){
   let h=head('ホーム',ymLabel(m));
   h+=`<div class="hero"><div class="lab">純資産</div><div class="big ${T.net<0?'neg':''}">${yen(T.net)}</div>
   <div class="cols"><div><span>口座などの資産</span><b>${yen(T.assets)}</b></div><div><span>カード未払い</span><b>${yen(T.cards)}</b></div><div><span>ローン残高</span><b>${yen(T.loans)}</b></div></div></div>`;
-  h+=`<div class="sec">今月のお金</div><div class="list">
+  h+=`<div class="sec">今月のお金<button data-a="tab:chart">🥧 円グラフ</button></div><div class="list">
   <div class="li"><span>💰 収入</span><b class="pos">${yen(s.inc)}</b></div>
   <div class="li"><span>🛍️ 支出</span><b>${yen(s.exp)}</b></div>
   <div class="li"><span>🏦 ローン返済</span><b>${yen(s.rep)}</b></div>
@@ -358,6 +388,7 @@ function txnsV(){
   if(tags.length)h+=`<div class="chiprow"><button data-a="tf:" class="${tf?'':'on'}">タグ：すべて</button>${tags.map(x=>`<button data-a="tf:${esc(x.t)}" class="${tf===x.t?'on':''}">#${esc(x.t)} ${x.n}</button>`).join('')}</div>`;
   h+=`<div class="list"><div class="f"><span>🔍</span><input type="search" enterkeyhint="search" data-q="1" value="${esc(q)}" placeholder="メモ・カテゴリ・タグ・金額で検索" aria-label="検索"></div></div>`;
   h+=`<div class="seg sc"><button data-a="allp:0" class="${allp?'':'on'}">月ごと</button><button data-a="allp:1" class="${allp?'on':''}">全期間</button><button data-a="srt:date" class="${srt==='date'?'on':''}">日付順</button><button data-a="srt:big" class="${srt==='big'?'on':''}">金額が大きい順</button><button data-a="srt:small" class="${srt==='small'?'on':''}">金額が小さい順</button></div>`;
+  h+=`<button class="btn" data-a="tab:chart" style="margin:0 0 10px">🥧 月ごとの比較（円グラフ）</button>`;
   if(!allp)h+=`<div class="mnav"><button class="ib" data-a="mon:-1" aria-label="前の月">‹</button><b>${ymLabel(mon)}</b><button class="ib" data-a="mon:1" aria-label="次の月">›</button></div>`;
   let list=S.txns.filter(x=>(allp||ymOf(x.date)===mon)&&(!tf||(x.tags||[]).includes(tf))&&(!q||txnText(x).includes(q.toLowerCase().replace(/\s+/g,'')))&&(!cf||(cf==='income'?x.type==='income':cf==='loanpay'?x.type==='loanpay':(x.type==='expense'&&x.cat===cf))));
   const sm=t=>list.filter(x=>x.type===t).reduce((a,x)=>a+x.amount,0);
