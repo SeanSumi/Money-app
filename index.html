@@ -17,7 +17,7 @@
 @media (prefers-color-scheme:dark){:root{--bg:#101318;--card:#1a1f27;--ink:#eef1f5;--mute:#94a0b0;--line:#2a313c;--acc:#6ea3f5;--pos:#4cc79a;--neg:#f08a6c;--field:#242b35;--warn:#e8b04a;--grad:#2f5fb8}}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0}
-body{background:var(--bg);color:var(--ink);font:16px/1.4 -apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;padding:env(safe-area-inset-top) 0 calc(150px + env(safe-area-inset-bottom))}
+body{background:var(--bg);color:var(--ink);font:16px/1.4 -apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;padding:env(safe-area-inset-top) 0 calc(170px + env(safe-area-inset-bottom))}
 button,input,select{font:inherit;color:inherit}
 button{cursor:pointer}
 main{max-width:620px;margin:0 auto;padding:0 16px}
@@ -59,10 +59,10 @@ button.li:active{background:var(--field)}
 .btns{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
 .steps{text-align:left;margin:10px 0 16px;padding-left:20px;color:var(--mute);font-size:14px}
 nav{position:fixed;left:0;right:0;bottom:0;background:color-mix(in srgb,var(--card) 92%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom);z-index:5}
-nav button{flex:1;border:0;background:none;color:var(--mute);padding:7px 0 6px;font-size:10px;display:flex;flex-direction:column;align-items:center;gap:1px}
-nav button span{font-size:20px;line-height:1.2}
+nav button{flex:1;border:0;background:none;color:var(--mute);padding:10px 0 9px;min-height:64px;font-size:13px;font-weight:600;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
+nav button span{font-size:26px;line-height:1.1}
 nav button.on{color:var(--acc)}
-.fab{position:fixed;right:18px;bottom:calc(72px + env(safe-area-inset-bottom));width:56px;height:56px;border-radius:28px;border:0;background:var(--acc);color:#fff;font-size:30px;line-height:1;box-shadow:0 4px 14px rgba(0,0,0,.28);z-index:6}
+.fab{position:fixed;right:18px;bottom:calc(84px + env(safe-area-inset-bottom));width:56px;height:56px;border-radius:28px;border:0;background:var(--acc);color:#fff;font-size:30px;line-height:1;box-shadow:0 4px 14px rgba(0,0,0,.28);z-index:6}
 .sheet-wrap{position:fixed;inset:0;z-index:20;display:flex;align-items:flex-end;justify-content:center}
 .sheet-wrap.hidden{display:none}
 .backdrop{position:absolute;inset:0;background:rgba(0,0,0,.4)}
