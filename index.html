@@ -126,11 +126,14 @@ nav button.on span{background:var(--field);border-radius:14px;padding:0 16px}
 .voice input{flex:1;min-width:0;background:var(--field);border:0;border-radius:12px;padding:11px 12px;outline:none;color:var(--ink)}
 .voice .vb{border:0;background:var(--field);border-radius:12px;padding:0 14px;font-size:18px}
 .voice .go{font-size:14px;color:var(--acc);font-weight:600}
+.bigbtn{display:flex;align-items:center;gap:14px;background:var(--card);border-radius:18px;padding:14px 16px;margin:0 0 10px;width:100%;border:0;text-align:left;font-size:18px;font-weight:700;color:var(--ink);cursor:pointer}
+.bigbtn .bi{font-size:30px;width:52px;height:52px;border-radius:15px;background:var(--field);display:flex;align-items:center;justify-content:center;flex:none}
+.bigbtn small{display:block;font-size:12px;font-weight:400;color:var(--mute);margin-top:2px}
 </style>
 </head>
 <body>
 <main id="view"></main>
-<button class="fab" id="fab" data-a="txn:new" aria-label="取引を追加">＋</button>
+<button class="fab" id="fab" data-a="choose" aria-label="取引を追加">＋</button>
 <nav id="nav">
   <button data-a="tab:home" data-t="home"><span>⌂</span>ホーム</button>
   <button data-a="tab:txns" data-t="txns"><span>☰</span>取引</button>
@@ -456,15 +459,19 @@ function renderSheet(){
 const accOpts=()=>S.accounts.map(a=>[a.id,a.name]);
 const payOpts=()=>[...S.accounts.map(a=>['a:'+a.id,a.name]),...S.cards.map(c=>['c:'+c.id,c.name+'（カード）'])];
 
-function openTxn(id){
+function openTxn(id,mode){
   const ex=id&&S.txns.find(x=>x.id===id);
   const lastPay=S.txns.length?(S.txns[S.txns.length-1].card?'c:'+S.txns[S.txns.length-1].card:'a:'+S.txns[S.txns.length-1].acc):null;
   const v=ex?{type:ex.type,amount:ex.amount,date:ex.date,cat:ex.cat||S.cats[0]&&S.cats[0].id,pay:ex.card?'c:'+ex.card:'a:'+ex.acc,memo:ex.memo||'',tags:tagStr(ex.tags),newcat:'',newicon:'🏷️',loan:ex.loan||(S.loans[0]&&S.loans[0].id)}
     :{type:'expense',amount:'',date:today(),cat:S.cats[0]&&S.cats[0].id,pay:(lastPay&&payOpts().some(o=>o[0]===lastPay))?lastPay:(payOpts()[0]||[''])[0],memo:'',tags:'',newcat:'',newicon:'🏷️',loan:S.loans[0]&&S.loans[0].id};
+  v.method=mode||'manual';
   openForm({title:ex?'取引を編集':'取引を記録',vals:v,
     fields:v=>{
       const f=[{type:'seg',k:'type',options:[['expense','支出'],['income','収入'],['loanpay','ローン返済']]},{k:'amount',label:'金額',type:'number',ph:'0',amt:1}];
-      if(!ex)f.splice(1,0,{type:'voice'},{type:'scan'});
+      if(!ex){
+        f.unshift({type:'seg',k:'method',options:[['manual','✍️ 手入力'],['photo','📷 写真・PDF'],['voice','🎤 声・文章']]});
+        if(v.method==='photo')f.splice(1,0,{type:'scan'});else if(v.method==='voice')f.splice(1,0,{type:'voice'});
+      }
       if(v.type==='expense'){f.push({k:'cat',label:'カテゴリ',type:'select',options:[...S.cats.map(c=>[c.id,catIcon(c.id)+' '+c.name]),['__new','＋ 新しいカテゴリ…']]});
         if(v.cat==='__new')f.push({k:'newicon',label:'アイコン（絵文字）',type:'text',ph:'🏷️'},{k:'newcat',label:'カテゴリ名',type:'text',ph:'例：ペット'});
         f.push({k:'pay',label:'支払い方法',type:'select',options:payOpts()})}
@@ -739,6 +746,16 @@ function openScanReview(items){
       });
       tab='txns';mon=ymOf(sel[0].date)}});
 }
+function openChooser(){
+  F=null;
+  $('#sheet').innerHTML=`<div class="backdrop" data-a="closech"></div><div class="sheet" role="dialog" aria-label="入力方法"><div class="sh-h"><button data-a="closech">キャンセル</button><b>入力方法をえらぶ</b><span style="width:70px"></span></div><div class="sh-b">
+  <button class="bigbtn" data-a="newtxn:manual"><span class="bi">✍️</span><span>手入力<small>金額やカテゴリを自分で入れる</small></span></button>
+  <label class="bigbtn"><span class="bi">📷</span><span>写真・PDF<small>レシートや明細を撮る・選ぶと自動入力</small></span><input type="file" accept="image/*,application/pdf" multiple data-chscan="1" style="display:none"></label>
+  <button class="bigbtn" data-a="newtxn:voice"><span class="bi">🎤</span><span>声・文章<small>「昨日 スーパーで3800円」と話す・打つ</small></span></button>
+  </div></div>`;
+  $('#sheet').classList.remove('hidden');
+}
+function focusVoice(){const i=document.querySelector('[data-voice]');if(i&&i.focus)i.focus()}
 function openBudget(){
   const v={};S.cats.forEach(c=>v['b_'+c.id]=S.budgets[c.id]||'');
   openForm({title:'月の予算',vals:v,fields:()=>S.cats.map(c=>({k:'b_'+c.id,label:c.name,type:'number',ph:'未設定'})),
@@ -754,7 +771,7 @@ document.addEventListener('click',e=>{
     if(el.dataset.vb){if(el.dataset.vb==='mic')startMic();else applyVoice((F&&F.voiceText)||'');return}
     if(el.dataset.tag){const ts=parseTags(F.vals.tags),k=ts.indexOf(el.dataset.tag);if(k>=0)ts.splice(k,1);else ts.push(el.dataset.tag);F.vals.tags=tagStr(ts);renderSheet();return}
     if(el.dataset.close){closeForm();return}
-    if(el.dataset.seg){F.vals[el.dataset.seg]=el.dataset.v;renderSheet();return}
+    if(el.dataset.seg){F.vals[el.dataset.seg]=el.dataset.v;renderSheet();if(el.dataset.seg==='method'&&el.dataset.v==='voice')focusVoice();return}
     if(el.dataset.save){const r=F.save(F.vals);if(r){$('#err').textContent=r;return}if(typeof gen==='function')gen();save();closeForm();render();return}
     if(el.dataset.del){
       if(!el.dataset.ok){el.dataset.ok=1;el.textContent='本当に削除する？もう一度タップ';return}
@@ -766,6 +783,9 @@ document.addEventListener('click',e=>{
   if(a==='tab'){tab=arg;render();window.scrollTo(0,0)}
   else if(a==='mon'){mon=addM(mon,Number(arg));render()}
   else if(a==='pf'){pf=arg;render()}
+  else if(a==='choose')openChooser();
+  else if(a==='closech')closeForm();
+  else if(a==='newtxn'){closeForm();openTxn(null,arg);if(arg==='voice')focusVoice()}
   else if(a==='txn')openTxn(arg==='new'?null:arg);
   else if(a==='acc')openAcc(arg==='new'?null:arg);
   else if(a==='card')openCard(arg==='new'?null:arg);
@@ -806,6 +826,7 @@ document.addEventListener('keydown',e=>{
 });
 document.addEventListener('change',e=>{
   const el=e.target;
+  if(el.dataset.chscan!=null){const fs=Array.from(el.files||[]);el.value='';if(!fs.length)return;closeForm();openTxn(null,'photo');handleScan(fs);return}
   if(el.dataset.scan){handleScan(el.files);el.value='';return}
   if(F&&el.dataset.k){F.vals[el.dataset.k]=el.type==='checkbox'?el.checked:el.value;if(el.dataset.k==='cat')renderSheet();return}
   if(!F&&el.dataset.tagname!=null){
