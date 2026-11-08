@@ -299,6 +299,15 @@ function onboarding(){
   <ol class="steps"><li>口座を追加（今の残高を入力）</li><li>カード・ローンがあれば追加（任意）</li><li>使ったお金・もらったお金を記録</li></ol>
   <div class="btns"><button class="btn" data-a="acc:new">口座を追加する</button></div></div>`;
 }
+function favs(n){
+  const m=new Map();
+  S.txns.filter(x=>x.type==='expense'&&x.memo).forEach(x=>{
+    const k=x.memo.trim();const e=m.get(k)||{memo:k,n:0};
+    e.n++;if(!e.date||x.date>=e.date){e.date=x.date;e.amount=x.amount;e.cat=x.cat;e.pay=x.card?'c:'+x.card:'a:'+x.acc;e.tags=x.tags||[]}
+    m.set(k,e)});
+  return[...m.values()].sort((a,b)=>b.n-a.n||(a.date<b.date?1:-1)).slice(0,n);
+}
+const favTpl=f=>({type:'expense',memo:f.memo,amount:f.amount,cat:f.cat,pay:f.pay,tags:tagStr(f.tags)});
 function homeV(){
   if(!S.accounts.length)return onboarding();
   const T=totals(),m=ymOf(today()),s=mSum(m),left=s.inc-s.exp-s.rep,t=today();
@@ -318,6 +327,10 @@ function homeV(){
   S.loans.forEach(l=>{if(num(l.monthly)>0&&l.payDay&&loanState(l).bal>0){let d=dayStr(ymOf(t),num(l.payDay));if(d<=t)d=dayStr(addM(ymOf(t),1),num(l.payDay));up.push({d,n:l.name+' 返済',a:num(l.monthly),i:'🏦'})}});
   up.sort((a,b)=>a.d<b.d?-1:1);
   if(up.length)h+=`<div class="sec">これからの支払い</div><div class="list">${up.slice(0,4).map(u=>`<div class="li"><span class="ic">${u.i}</span><div class="l"><div class="t">${esc(u.n)}</div><div class="s">${mdLabel(u.d)}</div></div><div class="r">${yen(u.a)}</div></div>`).join('')}</div>`;
+  const fv=favs(6);
+  if(fv.length)h+=`<div class="sec">よく使う（タップで記録）</div><div class="chips">${fv.map((f,i)=>`<button data-a="fav:${i}">${esc(catIcon(f.cat))} ${esc(f.memo)} ${yen(f.amount)}</button>`).join('')}</div>`;
+  const lb=(()=>{try{return Number(localStorage.getItem('money-lastbackup'))||0}catch(e){return 0}})();
+  if(S.txns.length>=10&&Date.now()-lb>30*86400000)h+=`<div class="note">💾 バックアップは取っていますか？ 設定の「データ」から書き出して、メモアプリなどに保管しておくと安心です。<button class="btn" style="margin-top:8px" data-a="tab:settings">設定を開く</button></div>`;
   const rec=[...S.txns].sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0).slice(0,5);
   h+=`<div class="sec">最近の取引<button data-a="tab:txns">すべて</button></div>`+(rec.length?`<div class="list">${rec.map(txnRow).join('')}</div>`:`<div class="empty"><p>右下の＋から最初の取引を記録しましょう</p></div>`);
   return h;
@@ -329,7 +342,8 @@ function txnRow(x){
   const ico=x.type==='income'?'💰':x.type==='loanpay'?'🏦':catIcon(x.cat);
   return`<button class="li" data-a="txn:${x.id}"><span class="ic">${ico}</span><div class="l"><div class="t">${esc(title)}</div><div class="s">${mdLabel(x.date)} ・ ${esc(sub)}${x.tags&&x.tags.length?' ・ '+x.tags.map(t=>'#'+esc(t)).join(' '):''}</div></div><div class="r ${cls}">${sign}${yen(x.amount).replace('-','')}</div></button>`;
 }
-let cf='',srt='date',allp=false;
+let cf='',srt='date',allp=false,q='';
+function txnText(x){return[x.memo,x.type==='income'?'収入':x.type==='loanpay'?'ローン返済':catName(x.cat),(x.tags||[]).join(' '),String(x.amount),payName(x)].join(' ').toLowerCase().replace(/\s+/g,'')}
 function txnsV(){
   if(!S.accounts.length)return onboarding();
   const tags=allTags();
@@ -340,9 +354,10 @@ function txnsV(){
   const cats=S.cats.filter(c=>used.has(c.id));
   h+=`<div class="chiprow"><button data-a="cf:" class="${cf?'':'on'}">すべて</button><button data-a="cf:income" class="${cf==='income'?'on':''}">💰 収入</button>${cats.map(c=>`<button data-a="cf:${c.id}" class="${cf===c.id?'on':''}">${esc(catIcon(c.id))} ${esc(c.name)}</button>`).join('')}<button data-a="cf:loanpay" class="${cf==='loanpay'?'on':''}">🏦 ローン返済</button></div>`;
   if(tags.length)h+=`<div class="chiprow"><button data-a="tf:" class="${tf?'':'on'}">タグ：すべて</button>${tags.map(x=>`<button data-a="tf:${esc(x.t)}" class="${tf===x.t?'on':''}">#${esc(x.t)} ${x.n}</button>`).join('')}</div>`;
+  h+=`<div class="list"><div class="f"><span>🔍</span><input type="search" enterkeyhint="search" data-q="1" value="${esc(q)}" placeholder="メモ・カテゴリ・タグ・金額で検索" aria-label="検索"></div></div>`;
   h+=`<div class="seg sc"><button data-a="allp:0" class="${allp?'':'on'}">月ごと</button><button data-a="allp:1" class="${allp?'on':''}">全期間</button><button data-a="srt:date" class="${srt==='date'?'on':''}">日付順</button><button data-a="srt:big" class="${srt==='big'?'on':''}">金額が大きい順</button><button data-a="srt:small" class="${srt==='small'?'on':''}">金額が小さい順</button></div>`;
   if(!allp)h+=`<div class="mnav"><button class="ib" data-a="mon:-1" aria-label="前の月">‹</button><b>${ymLabel(mon)}</b><button class="ib" data-a="mon:1" aria-label="次の月">›</button></div>`;
-  let list=S.txns.filter(x=>(allp||ymOf(x.date)===mon)&&(!tf||(x.tags||[]).includes(tf))&&(!cf||(cf==='income'?x.type==='income':cf==='loanpay'?x.type==='loanpay':(x.type==='expense'&&x.cat===cf))));
+  let list=S.txns.filter(x=>(allp||ymOf(x.date)===mon)&&(!tf||(x.tags||[]).includes(tf))&&(!q||txnText(x).includes(q.toLowerCase().replace(/\s+/g,'')))&&(!cf||(cf==='income'?x.type==='income':cf==='loanpay'?x.type==='loanpay':(x.type==='expense'&&x.cat===cf))));
   const sm=t=>list.filter(x=>x.type===t).reduce((a,x)=>a+x.amount,0);
   const ex=sm('expense'),inc=sm('income'),rep=sm('loanpay');
   const label=(cf?(cf==='income'?'収入':cf==='loanpay'?'ローン返済':catIcon(cf)+' '+catName(cf)):'すべて')+(tf?' ＋ #'+tf:'')+'（'+(allp?'全期間':ymLabel(mon))+'）';
@@ -474,6 +489,7 @@ function closeForm(){F=null;$('#sheet').classList.add('hidden');$('#sheet').inne
 function fieldHtml(f,v){
   if(f.type==='seg')return`<div class="seg">${f.options.map(o=>`<button data-seg="${f.k}" data-v="${o[0]}" class="${v[f.k]===o[0]?'on':''}">${o[1]}</button>`).join('')}</div>`;
   if(f.type==='info')return`<div class="info">${f.html}</div>`;
+  if(f.type==='favs')return`<div class="dh" style="margin:0 4px 6px">よく使う（タップで入力）</div><div class="chips">${f.list.map((x,i)=>`<button data-favf="${i}">${esc(catIcon(x.cat))} ${esc(x.memo)}</button>`).join('')}</div>`;
   if(f.type==='emoji')return`<div class="f"><label>${esc(f.label||'アイコン')}</label><button type="button" class="emobtn" data-emok="${f.k}" aria-label="絵文字を選ぶ">${esc(v[f.k]||f.dflt||'🙂')}</button></div>`;
   if(f.type==='voice')return`<div class="voice"><textarea rows="3" data-voice="1" placeholder="話す・打つ・貼り付け　例：昨日 スーパーで3800円" aria-label="声・文章で入力">${esc((F&&F.voiceText)||'')}</textarea><button class="vb" data-vb="mic" aria-label="音声入力">🎤</button><button class="vb go" data-vb="go">反映</button></div><div class="scanmsg" id="voicemsg"></div>`;
   if(f.type==='paychips')return`<div class="dh" style="margin:0 4px 6px">${esc(f.label)}</div><div class="chips">${f.options.map(o=>`<button data-payk="${f.k}" data-v="${esc(o[0])}" class="${v[f.k]===o[0]?'on':''}">${o[0][0]==='c'?'💳':'🏧'} ${esc(o[1].replace('（カード）',''))}</button>`).join('')}</div>`;
@@ -490,26 +506,29 @@ function fieldHtml(f,v){
 function renderSheet(){
   const fs=F.fields(F.vals);let body='',grp='';
   const flush=()=>{if(grp)body+=`<div class="list">${grp}</div>`;grp=''};
-  fs.forEach(f=>{if(f.type==='seg'||f.type==='info'||f.type==='chips'||f.type==='scan'||f.type==='voice'||f.type==='paychips'||f.type==='area'||f.type==='preview'){flush();body+=f.type==='info'?`<div class="list">${fieldHtml(f,F.vals)}</div>`:fieldHtml(f,F.vals)}else grp+=fieldHtml(f,F.vals)});
+  fs.forEach(f=>{if(f.type==='seg'||f.type==='info'||f.type==='chips'||f.type==='scan'||f.type==='voice'||f.type==='paychips'||f.type==='area'||f.type==='preview'||f.type==='favs'){flush();body+=f.type==='info'?`<div class="list">${fieldHtml(f,F.vals)}</div>`:fieldHtml(f,F.vals)}else grp+=fieldHtml(f,F.vals)});
   flush();
-  $('#sheet').innerHTML=`<div class="backdrop" data-close="1"></div><div class="sheet" role="dialog" aria-label="${esc(F.title)}"><div class="sh-h"><button data-close="1">キャンセル</button><b>${esc(F.title)}</b><button class="pri" data-save="1">保存</button></div><div class="sh-b">${body}<div class="err" id="err"></div>${F.del?`<button class="btn danger delbtn" data-del="1">削除</button>`:''}</div></div>`;
+  $('#sheet').innerHTML=`<div class="backdrop" data-close="1"></div><div class="sheet" role="dialog" aria-label="${esc(F.title)}"><div class="sh-h"><button data-close="1">キャンセル</button><b>${esc(F.title)}</b><button class="pri" data-save="1">保存</button></div><div class="sh-b">${body}<div class="err" id="err"></div>${F.copy?`<button class="btn" data-copy="1" style="margin-bottom:10px">この内容でもう1件記録（コピー）</button>`:''}${F.del?`<button class="btn danger delbtn" data-del="1">削除</button>`:''}</div></div>`;
 }
 const accOpts=()=>S.accounts.map(a=>[a.id,a.name]);
 const payOpts=()=>[...S.accounts.map(a=>['a:'+a.id,a.name]),...S.cards.map(c=>['c:'+c.id,c.name+'（カード）'])];
 
-function openTxn(id,mode){
+function openTxn(id,mode,tpl){
   const ex=id&&S.txns.find(x=>x.id===id);
   const lastPay=S.txns.length?(S.txns[S.txns.length-1].card?'c:'+S.txns[S.txns.length-1].card:'a:'+S.txns[S.txns.length-1].acc):null;
   const v=ex?{type:ex.type,amount:ex.amount,date:ex.date,cat:ex.cat||S.cats[0]&&S.cats[0].id,pay:ex.card?'c:'+ex.card:'a:'+ex.acc,memo:ex.memo||'',tags:tagStr(ex.tags),newcat:'',newicon:'🏷️',loan:ex.loan||(S.loans[0]&&S.loans[0].id)}
     :{type:'expense',amount:'',date:today(),cat:S.cats[0]&&S.cats[0].id,pay:(lastPay&&payOpts().some(o=>o[0]===lastPay))?lastPay:(payOpts()[0]||[''])[0],memo:'',tags:'',newcat:'',newicon:'🏷️',loan:S.loans[0]&&S.loans[0].id};
+  if(tpl&&!ex)Object.assign(v,tpl);
   v.method=mode||'manual';
   openForm({title:ex?'取引を編集':'取引を記録',vals:v,
+    copy:ex&&ex.type!=='loanpay'?()=>{closeForm();openTxn(null,'manual',{type:ex.type,memo:ex.memo||'',amount:ex.amount,cat:ex.cat||v.cat,pay:v.pay,tags:tagStr(ex.tags)})}:null,
     fields:v=>{
       const f=[{type:'seg',k:'type',options:[['expense','支出'],['income','収入'],['loanpay','ローン返済']]},{k:'amount',label:'金額',type:'number',ph:'0',amt:1}];
       if(!ex){
         f.unshift({type:'seg',k:'method',options:[['manual','✍️ 手入力'],['photo','📷 写真・PDF'],['voice','🎤 声・文章']]});
         if(v.method==='photo')f.splice(1,0,{type:'scan'});else if(v.method==='voice')f.splice(1,0,{type:'voice'});
       }
+      if(!ex&&v.type==='expense'&&v.method==='manual'&&!tpl){const fv=favs(8);if(fv.length)f.splice(2,0,{type:'favs',list:fv})}
       if(v.type==='expense'){f.push({k:'cat',label:'カテゴリ',type:'select',options:[...S.cats.map(c=>[c.id,catIcon(c.id)+' '+c.name]),['__new','＋ 新しいカテゴリ…']]});
         if(v.cat==='__new')f.push({k:'newicon',label:'アイコン（絵文字）',type:'emoji',dflt:'🏷️'},{k:'newcat',label:'カテゴリ名',type:'text',ph:'例：ペット'});
         f.push({k:'pay',label:'支払い方法（口座・カード）',type:'paychips',options:payOpts()})}
@@ -534,6 +553,7 @@ function openTxn(id,mode){
       if(ex)Object.assign(ex,o);else S.txns.push(o);
     },
     del:ex?()=>{S.txns=S.txns.filter(x=>x.id!==ex.id)}:null});
+  if(!ex&&(!mode||mode==='manual'))setTimeout(()=>{try{const a=document.querySelector('[data-k="amount"]');a&&a.focus&&a.focus()}catch(e){}},200);
 }
 function openAcc(id){
   const ex=id&&S.accounts.find(a=>a.id===id);
@@ -939,6 +959,8 @@ document.addEventListener('click',e=>{
     if(el.dataset.vb){if(el.dataset.vb==='mic')startMic();else applyVoice((F&&F.voiceText)||'');return}
     if(el.dataset.tag){const ts=parseTags(F.vals.tags),k=ts.indexOf(el.dataset.tag);if(k>=0)ts.splice(k,1);else ts.push(el.dataset.tag);F.vals.tags=tagStr(ts);renderSheet();return}
     if(el.dataset.close){closeForm();return}
+    if(el.dataset.favf!=null){const x=favs(8)[Number(el.dataset.favf)];if(x){Object.assign(F.vals,favTpl(x));renderSheet()}return}
+    if(el.dataset.copy){if(F.copy)F.copy();return}
     if(el.dataset.emok){const k=el.dataset.emok;pickEmoji(F.vals[k],x=>{F.vals[k]=x;renderSheet()});return}
     if(el.dataset.seg){F.vals[el.dataset.seg]=el.dataset.v;renderSheet();if(el.dataset.seg==='method'&&el.dataset.v==='voice')focusVoice();return}
     if(el.dataset.save){const r=F.save(F.vals);if(r){$('#err').textContent=r;return}if(typeof gen==='function')gen();save();closeForm();render();return}
@@ -967,6 +989,7 @@ document.addEventListener('click',e=>{
   else if(a==='catadd'){S.cats.push({id:uid('e'),name:'新しいカテゴリ',icon:'🏷️'});save();render()}
   else if(a==='tf'){tf=arg||'';render()}
   else if(a==='cf'){cf=arg||'';render()}
+  else if(a==='fav'){const f=favs(6)[Number(arg)];if(f)openTxn(null,'manual',favTpl(f))}
   else if(a==='srt'){srt=arg;render()}
   else if(a==='allp'){allp=arg==='1';render()}
   else if(a==='tagdel'){
@@ -982,7 +1005,7 @@ document.addEventListener('click',e=>{
   else if(a==='import')openImport();
   else if(a==='export'){
     const txt=JSON.stringify(S);
-    try{navigator.clipboard.writeText(txt).then(()=>{$('#msg').textContent='コピーしました。メモアプリなどに貼り付けて保管できます。'},()=>{$('#msg').textContent='コピーできませんでした'})}catch(err){$('#msg').textContent='コピーできませんでした'}}
+    try{navigator.clipboard.writeText(txt).then(()=>{try{localStorage.setItem('money-lastbackup',String(Date.now()))}catch(e){}$('#msg').textContent='コピーしました。メモアプリなどに貼り付けて保管できます。'},()=>{$('#msg').textContent='コピーできませんでした'})}catch(err){$('#msg').textContent='コピーできませんでした'}}
 });
 document.addEventListener('input',e=>{
   const el=e.target;
@@ -993,6 +1016,7 @@ document.addEventListener('input',e=>{
   else if(el.dataset.cicon){const c=S.cats.find(x=>x.id===el.dataset.cicon);if(c){c.icon=el.value.trim();save()}}
 });
 document.addEventListener('change',e=>{
+  if(e.target.dataset&&e.target.dataset.q!=null){q=e.target.value.trim();render();return}
   const el=e.target;
   if(el.dataset.chscan!=null){const fs=Array.from(el.files||[]);el.value='';if(!fs.length)return;closeForm();openTxn(null,'photo');handleScan(fs);return}
   if(el.dataset.scan){handleScan(el.files);el.value='';return}
