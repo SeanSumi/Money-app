@@ -123,7 +123,7 @@ nav button.on span{background:var(--field);border-radius:14px;padding:0 16px}
 .scanmsg{font-size:13px;color:var(--mute);min-height:18px;margin:0 4px 10px}
 .scanmsg.bad{color:var(--neg)}
 .voice{display:flex;gap:6px;margin:0 0 6px}
-.voice input{flex:1;min-width:0;background:var(--field);border:0;border-radius:12px;padding:11px 12px;outline:none;color:var(--ink)}
+.voice textarea{flex:1;min-width:0;background:var(--field);border:0;border-radius:12px;padding:11px 12px;outline:none;color:var(--ink);font:inherit;resize:none}
 .voice .vb{border:0;background:var(--field);border-radius:12px;padding:0 14px;font-size:18px}
 .voice .go{font-size:14px;color:var(--acc);font-weight:600}
 .bigbtn{display:flex;align-items:center;gap:14px;background:var(--card);border-radius:18px;padding:14px 16px;margin:0 0 10px;width:100%;border:0;text-align:left;font-size:18px;font-weight:700;color:var(--ink);cursor:pointer}
@@ -417,7 +417,7 @@ function closeForm(){F=null;$('#sheet').classList.add('hidden');$('#sheet').inne
 function fieldHtml(f,v){
   if(f.type==='seg')return`<div class="seg">${f.options.map(o=>`<button data-seg="${f.k}" data-v="${o[0]}" class="${v[f.k]===o[0]?'on':''}">${o[1]}</button>`).join('')}</div>`;
   if(f.type==='info')return`<div class="info">${f.html}</div>`;
-  if(f.type==='voice')return`<div class="voice"><input type="text" data-voice="1" value="${esc((F&&F.voiceText)||'')}" placeholder="話す／打つ　例：昨日 スーパーで3800円" aria-label="声・文章で入力"><button class="vb" data-vb="mic" aria-label="音声入力">🎤</button><button class="vb go" data-vb="go">反映</button></div><div class="scanmsg" id="voicemsg"></div>`;
+  if(f.type==='voice')return`<div class="voice"><textarea rows="3" data-voice="1" placeholder="話す・打つ・貼り付け　例：昨日 スーパーで3800円" aria-label="声・文章で入力">${esc((F&&F.voiceText)||'')}</textarea><button class="vb" data-vb="mic" aria-label="音声入力">🎤</button><button class="vb go" data-vb="go">反映</button></div><div class="scanmsg" id="voicemsg"></div>`;
   if(f.type==='paychips')return`<div class="dh" style="margin:0 4px 6px">${esc(f.label)}</div><div class="chips">${f.options.map(o=>`<button data-payk="${f.k}" data-v="${esc(o[0])}" class="${v[f.k]===o[0]?'on':''}">${o[0][0]==='c'?'💳':'🏧'} ${esc(o[1].replace('（カード）',''))}</button>`).join('')}</div>`;
   if(f.type==='scan')return`<label class="scan">📷 写真・PDFから自動入力<input type="file" accept="image/*,application/pdf" multiple data-scan="1" style="display:none"></label><div class="scanmsg" id="scanmsg"></div>`;
   if(f.type==='check')return`<div class="f"><label for="ck-${f.k}" style="flex:1;font-size:14px">${esc(f.label)}</label><input id="ck-${f.k}" type="checkbox" data-k="${f.k}" style="flex:none;width:22px;height:22px" ${v[f.k]?'checked':''}></div>`;
@@ -564,6 +564,16 @@ function extractDate(t){
   if((m=t.match(/一昨日|おととい/))){date=rel(-2)}
   else if((m=t.match(/昨日|きのう/))){date=rel(-1)}
   else if((m=t.match(/今日|きょう|本日/))){date=T}
+  else if((m=t.match(/(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/))){
+    const y=num(m[1]),mo=num(m[2]),dd=num(m[3]);
+    date=y+'-'+pad(mo)+'-'+pad(Math.min(dd,dim(y+'-'+pad(mo))));
+  }
+  else if((m=t.match(/(^|[^\d\/])(\d{1,2})\/(\d{1,2})(?![\d\/])/))&&num(m[2])>=1&&num(m[2])<=12&&num(m[3])>=1&&num(m[3])<=31){
+    const y=now.getFullYear(),mo=num(m[2]),dd=num(m[3]);
+    let ds=y+'-'+pad(mo)+'-'+pad(Math.min(dd,dim(y+'-'+pad(mo))));
+    if(ds>rel(31))ds=(y-1)+ds.slice(4);
+    date=ds;
+  }
   else if((m=t.match(/(?:(\d{4})年)?\s*(\d{1,2})月\s*(\d{1,2})日/))){
     let y=m[1]?num(m[1]):now.getFullYear();const mo=num(m[2]),dd=num(m[3]);
     let ds=y+'-'+pad(mo)+'-'+pad(Math.min(dd,dim(y+'-'+pad(mo))));
@@ -576,7 +586,7 @@ function extractDate(t){
   }
   return{date,t:m?t.replace(m[0],' '):t};
 }
-const KW=[['住居',/家賃|住宅|管理費/],['食費',/スーパー|コンビニ|ランチ|ディナー|ご飯|ごはん|昼食|夕食|朝食|食事|外食|カフェ|コーヒー|弁当|ラーメン|パン|マック|スタバ|食/],['光熱・通信',/電気|ガス|水道|電話|スマホ|携帯|ネット|通信|wifi/i],['交通',/電車|バス|タクシー|ガソリン|駐車|交通|Suica|スイカ|定期|新幹線|高速/],['日用品',/ドラッグ|日用|洗剤|ティッシュ|薬|シャンプー|百均|100均|ダイソー/],['娯楽・交際',/飲み会|映画|ゲーム|旅行|趣味|プレゼント|ライブ|交際|カラオケ|居酒屋|デート/]];
+const KW=[['住居',/家賃|住宅|管理費|維持費/],['食費',/スーパー|コンビニ|ランチ|ディナー|ご飯|ごはん|昼食|夕食|朝食|食事|外食|カフェ|コーヒー|弁当|ラーメン|パン|マック|スタバ|食/],['光熱・通信',/電気|ガス|水道|電話|スマホ|携帯|ネット|通信|wifi/i],['交通',/電車|バス|タクシー|ガソリン|駐車|交通|Suica|スイカ|定期|新幹線|高速/],['日用品',/ドラッグ|日用|洗剤|ティッシュ|薬|シャンプー|百均|100均|ダイソー/],['娯楽・交際',/飲み会|映画|ゲーム|旅行|趣味|プレゼント|ライブ|交際|カラオケ|居酒屋|デート/]];
 function voiceCat(text){
   const fb=(S.cats.find(c=>c.name==='その他')||S.cats[S.cats.length-1]||{}).id||null;
   const direct=S.cats.find(c=>text.includes(c.name));if(direct)return direct.id;
@@ -813,10 +823,6 @@ document.addEventListener('input',e=>{
   else if(el.dataset.apikey!=null){try{localStorage.setItem(KEYLS,el.value.trim())}catch(err){}}
   else if(el.dataset.cat){const c=S.cats.find(x=>x.id===el.dataset.cat);if(c){c.name=el.value;save()}}
   else if(el.dataset.cicon){const c=S.cats.find(x=>x.id===el.dataset.cicon);if(c){c.icon=el.value.trim();save()}}
-});
-document.addEventListener('keydown',e=>{
-  const el=e.target;
-  if(e.key==='Enter'&&F&&el.dataset&&el.dataset.voice!=null){e.preventDefault();F.voiceText=el.value;applyVoice(F.voiceText)}
 });
 document.addEventListener('change',e=>{
   const el=e.target;
