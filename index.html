@@ -129,6 +129,7 @@ nav button.on span{background:var(--field);border-radius:14px;padding:0 16px}
 .bigbtn{display:flex;align-items:center;gap:14px;background:var(--card);border-radius:18px;padding:14px 16px;margin:0 0 10px;width:100%;border:0;text-align:left;font-size:18px;font-weight:700;color:var(--ink);cursor:pointer}
 .bigbtn .bi{font-size:30px;width:52px;height:52px;border-radius:15px;background:var(--field);display:flex;align-items:center;justify-content:center;flex:none}
 .bigbtn small{display:block;font-size:12px;font-weight:400;color:var(--mute);margin-top:2px}
+.area{display:block;width:100%;background:var(--card);border:0;border-radius:14px;padding:12px;font:inherit;color:var(--ink);resize:vertical;outline:none;min-height:130px;margin:0 0 10px}
 </style>
 </head>
 <body>
@@ -212,6 +213,7 @@ const tagStr=a=>(a||[]).map(t=>'#'+t).join(' ');
 function allTags(){const m={};S.txns.forEach(x=>(x.tags||[]).forEach(t=>m[t]=(m[t]||0)+1));S.recs.forEach(r=>(r.tags||[]).forEach(t=>{if(!m[t])m[t]=0}));return Object.keys(m).map(t=>({t,n:m[t]})).sort((a,b)=>b.n-a.n||(a.t<b.t?-1:1))}
 const KICON={income:'💰',card:'💳',loan:'🏦',fixed:'📌',other:'👛'};
 const TI={'ホーム':'🏡','取引':'🧾','収支':'💸','予算':'🎯','資産':'💎','設定':'⚙️','マネー管理':'👛'};
+const cardRule=c=>(num(c.closing)?num(c.closing)+'日締め':'月末締め')+'・'+['当月','翌月','翌々月'][c.offset==null?1:num(c.offset)]+(num(c.payDay)||27)+'日払い';
 const catName=id=>(S.cats.find(c=>c.id===id)||{name:'未分類'}).name;
 const payName=t=>t.card?(S.cards.find(c=>c.id===t.card)||{name:'カード'}).name:(S.accounts.find(a=>a.id===t.acc)||{name:'口座'}).name;
 
@@ -353,7 +355,7 @@ function assetsV(){
   let h=head('資産',yen(T.net));
   h+=`<div class="sec">口座・現金<button data-a="acc:new">追加</button></div><div class="list">${S.accounts.map(a=>`<button class="li" data-a="acc:${a.id}"><span class="ic">🏧</span><div class="l"><div class="t">${esc(a.name)}</div></div><div class="r">${yen(accBal(a))}</div></button>`).join('')}</div>`;
   h+=`<div class="sec">クレジットカード<button data-a="card:new">追加</button></div>`;
-  h+=S.cards.length?`<div class="list">${S.cards.map(c=>{const i=cardInfo(c);return`<button class="li" data-a="card:${c.id}"><span class="ic">💳</span><div class="l"><div class="t">${esc(c.name)}</div><div class="s">${i.next?'次回 '+mdLabel(i.next.pay)+' に '+yen(i.next.total):'未払いなし'}</div></div><div class="r">${yen(i.unpaid)}</div></button>`}).join('')}</div>`:`<div class="note">カードを追加すると、締め日・引き落とし日に合わせて未払い額を自動計算します。</div>`;
+  h+=S.cards.length?`<div class="list">${S.cards.map(c=>{const i=cardInfo(c);return`<button class="li" data-a="card:${c.id}"><span class="ic">💳</span><div class="l"><div class="t">${esc(c.name)}</div><div class="s">${cardRule(c)}　${i.next?'次回 '+mdLabel(i.next.pay)+' '+yen(i.next.total):'未払いなし'}</div></div><div class="r">${yen(i.unpaid)}</div></button>`}).join('')}</div>`:`<div class="note">カードを追加すると、締め日・引き落とし日に合わせて未払い額を自動計算します。</div>`;
   h+=`<div class="sec">ローン<button data-a="loan:new">追加</button></div>`;
   h+=S.loans.length?`<div class="list">${S.loans.map(l=>{const st=loanState(l),p=loanProj(l,st.bal);const sub=p?(p.done?'完済済み 🎉':p.never?'返済額が利息以下です':'完済見込み '+ymLabel(p.end)+'ごろ'):'月々の返済額を設定すると完済日を計算します';return`<button class="li" data-a="loan:${l.id}"><span class="ic">🏦</span><div class="l"><div class="t">${esc(l.name)}</div><div class="s">${esc(sub)}</div></div><div class="r">${yen(st.bal)}</div></button>`}).join('')}</div>`:`<div class="note">ローンを追加すると、返済のたびに元金と利息を分けて残高を減らします。</div>`;
   return h;
@@ -419,6 +421,7 @@ function fieldHtml(f,v){
   if(f.type==='info')return`<div class="info">${f.html}</div>`;
   if(f.type==='voice')return`<div class="voice"><textarea rows="3" data-voice="1" placeholder="話す・打つ・貼り付け　例：昨日 スーパーで3800円" aria-label="声・文章で入力">${esc((F&&F.voiceText)||'')}</textarea><button class="vb" data-vb="mic" aria-label="音声入力">🎤</button><button class="vb go" data-vb="go">反映</button></div><div class="scanmsg" id="voicemsg"></div>`;
   if(f.type==='paychips')return`<div class="dh" style="margin:0 4px 6px">${esc(f.label)}</div><div class="chips">${f.options.map(o=>`<button data-payk="${f.k}" data-v="${esc(o[0])}" class="${v[f.k]===o[0]?'on':''}">${o[0][0]==='c'?'💳':'🏧'} ${esc(o[1].replace('（カード）',''))}</button>`).join('')}</div>`;
+  if(f.type==='area')return`<textarea class="area" data-k="${f.k}" rows="7" placeholder="${esc(f.ph||'')}">${esc(v[f.k]||'')}</textarea>`;
   if(f.type==='scan')return`<label class="scan">📷 写真・PDFから自動入力<input type="file" accept="image/*,application/pdf" multiple data-scan="1" style="display:none"></label><div class="scanmsg" id="scanmsg"></div>`;
   if(f.type==='check')return`<div class="f"><label for="ck-${f.k}" style="flex:1;font-size:14px">${esc(f.label)}</label><input id="ck-${f.k}" type="checkbox" data-k="${f.k}" style="flex:none;width:22px;height:22px" ${v[f.k]?'checked':''}></div>`;
   if(f.type==='chips')return`<div class="chips">${f.tags.map(t=>`<button data-tag="${esc(t)}" class="${f.sel.includes(t)?'on':''}">#${esc(t)}</button>`).join('')}</div>`;
@@ -430,7 +433,7 @@ function fieldHtml(f,v){
 function renderSheet(){
   const fs=F.fields(F.vals);let body='',grp='';
   const flush=()=>{if(grp)body+=`<div class="list">${grp}</div>`;grp=''};
-  fs.forEach(f=>{if(f.type==='seg'||f.type==='info'||f.type==='chips'||f.type==='scan'||f.type==='voice'||f.type==='paychips'){flush();body+=f.type==='info'?`<div class="list">${fieldHtml(f,F.vals)}</div>`:fieldHtml(f,F.vals)}else grp+=fieldHtml(f,F.vals)});
+  fs.forEach(f=>{if(f.type==='seg'||f.type==='info'||f.type==='chips'||f.type==='scan'||f.type==='voice'||f.type==='paychips'||f.type==='area'){flush();body+=f.type==='info'?`<div class="list">${fieldHtml(f,F.vals)}</div>`:fieldHtml(f,F.vals)}else grp+=fieldHtml(f,F.vals)});
   flush();
   $('#sheet').innerHTML=`<div class="backdrop" data-close="1"></div><div class="sheet" role="dialog" aria-label="${esc(F.title)}"><div class="sh-h"><button data-close="1">キャンセル</button><b>${esc(F.title)}</b><button class="pri" data-save="1">保存</button></div><div class="sh-b">${body}<div class="err" id="err"></div>${F.del?`<button class="btn danger delbtn" data-del="1">削除</button>`:''}</div></div>`;
 }
@@ -491,12 +494,44 @@ function openCard(id){
   openForm({title:ex?'カードを編集':'カードを追加',vals:v,
     fields:()=>{
       const f=[{k:'name',label:'名前',type:'text',ph:'例：メインカード'},{k:'closing',label:'締め日（0=月末）',type:'number'},{k:'offset',label:'引き落とし月',type:'select',options:[['0','当月'],['1','翌月'],['2','翌々月']]},{k:'payDay',label:'引き落とし日',type:'number'},{k:'acc',label:'引き落とし口座',type:'select',options:accOpts()}];
-      if(ex){const i=cardInfo(ex);f.push({type:'info',html:`<b>未払い ${yen(i.unpaid)}</b><br>`+(i.st.filter(s=>s.pay>today()).map(s=>`${mdLabel(s.pay)} 引き落とし　${yen(s.total)}（${s.n}件）`).join('<br>')||'次回の引き落とし予定はありません')})}
+      if(ex){const i=cardInfo(ex);f.push({type:'info',html:`<b>${cardRule(ex)}</b>　未払い ${yen(i.unpaid)}<br>`+(i.st.filter(s=>s.pay>today()).map(s=>`${mdLabel(s.pay)} 引き落とし　${yen(s.total)}（${s.n}件）`).join('<br>')||'次回の引き落とし予定はありません')})}
       return f},
     save:v=>{if(!v.name.trim())return'名前を入力してください';if(!v.acc)return'先に口座を追加してください';
       const o={name:v.name.trim(),closing:num(v.closing),payDay:num(v.payDay)||27,offset:num(v.offset),acc:v.acc};
       if(ex)Object.assign(ex,o);else S.cards.push({id:uid('c'),...o})},
     del:ex?()=>{if(S.txns.some(x=>x.card===ex.id)||S.recs.some(r=>r.card===ex.id))return'このカードの取引があるため削除できません';S.cards=S.cards.filter(c=>c.id!==ex.id)}:null});
+}
+function parseCardLine(line){
+  let t=normSpeech(line).replace(/[　]/g,' ').trim();if(!t)return null;
+  let m,offset=null,closing=null,payDay=null;
+  if((m=t.match(/翌々月/))){offset=2;t=t.replace(m[0],' ')}
+  else if((m=t.match(/翌月|来月/))){offset=1;t=t.replace(m[0],' ')}
+  else if((m=t.match(/当月|今月|同月/))){offset=0;t=t.replace(m[0],' ')}
+  if((m=t.match(/(\d{1,2})\s*日?\s*締め?/))){closing=num(m[1]);t=t.replace(m[0],' ')}
+  else if((m=t.match(/(?:月末|末)\s*日?\s*締め?/))){closing=0;t=t.replace(m[0],' ')}
+  if((m=t.match(/(\d{1,2})\s*日?\s*(?:支払い?|払い?|引き?落とし?|引落)/))){payDay=num(m[1]);t=t.replace(m[0],' ')}
+  if(closing===null||payDay===null||payDay<1||payDay>31||closing>31)return null;
+  if(offset===null)offset=(closing>0&&payDay>closing)?0:1;
+  const name=t.replace(/[、,:：]/g,' ').replace(/\s+/g,' ').trim().replace(/(の)?(支払い?|払い)$/,'').trim();
+  if(!name)return null;
+  return{name,closing,payDay,offset};
+}
+function openCardBulk(){
+  const norm=x=>String(x).replace(/\s+/g,'').toLowerCase();
+  openForm({title:'カードをまとめて登録',vals:{text:'',acc:S.accounts[0]&&S.accounts[0].id},
+    fields:()=>[{type:'info',html:'1行に1枚、「名前 ○日締め ○日払い」の形で貼り付けます。<br>例：<b>AMEXカード 7日締め26日払い</b><br>月末締めは「末締め」と書きます。支払い月は「当月・翌月・翌々月」で指定できます（書かなければ自動で判断します）。同じ名前のカードがあれば、設定を上書きします。'},
+      {type:'area',k:'text',ph:'AMEXカード 7日締め26日払い\nSMBCカード 末締め26日払い'},
+      {k:'acc',label:'引き落とし口座',type:'select',options:accOpts()}],
+    save:v=>{
+      const cards=String(v.text||'').split(/\n/).map(parseCardLine).filter(Boolean);
+      if(!cards.length)return'読み取れる行がありません。「名前 ○日締め ○日払い」の形で入力してください';
+      if(!v.acc)return'先に口座を追加してください';
+      cards.forEach(c=>{
+        const ex=S.cards.find(x=>norm(x.name)===norm(c.name));
+        if(ex)Object.assign(ex,{closing:c.closing,payDay:c.payDay,offset:c.offset});
+        else S.cards.push({id:uid('c'),name:c.name,closing:c.closing,payDay:c.payDay,offset:c.offset,acc:v.acc});
+      });
+      tab='assets'}});
 }
 function openLoan(id){
   const ex=id&&S.loans.find(l=>l.id===id),st=ex&&loanState(ex);
@@ -753,7 +788,7 @@ function openChooser(){
   <button class="bigbtn" data-a="newtxn:manual"><span class="bi">✍️</span><span>手入力<small>金額やカテゴリを自分で入れる</small></span></button>
   <label class="bigbtn"><span class="bi">📷</span><span>写真・PDF<small>レシートや明細を撮る・選ぶと自動入力</small></span><input type="file" accept="image/*,application/pdf" multiple data-chscan="1" style="display:none"></label>
   <button class="bigbtn" data-a="newtxn:voice"><span class="bi">🎤</span><span>声・文章<small>「昨日 スーパーで3800円」と話す・打つ</small></span></button>
-  <div class="dh">そのほかの入力（手入力）</div><div class="list">${row('acc','🏧','口座を追加')}${row('card','💳','カードを追加')}${row('loan','🏦','ローンを追加')}${row('rec','📌','毎月の固定（給料・家賃など）を追加')}${row('budget','🎯','予算を設定')}</div>`;
+  <div class="dh">そのほかの入力（手入力）</div><div class="list">${row('acc','🏧','口座を追加')}${row('card','💳','カードを追加')}${row('cardbulk','💳','カードの締め日・支払日をまとめて登録')}${row('loan','🏦','ローンを追加')}${row('rec','📌','毎月の固定（給料・家賃など）を追加')}${row('budget','🎯','予算を設定')}</div>`;
   }else{
     h+=`<div class="dh" style="margin-top:0">はじめに、口座を追加しましょう</div><div class="list">${row('acc','🏧','口座を追加（いまの残高を入力）')}</div><div class="note">口座を追加すると、取引の記録（手入力・写真・声）や、カード・ローンなどの入力が使えるようになります。</div>`;
   }
@@ -791,7 +826,7 @@ document.addEventListener('click',e=>{
   else if(a==='pf'){pf=arg;render()}
   else if(a==='choose')openChooser();
   else if(a==='closech')closeForm();
-  else if(a==='chopen'){closeForm();({acc:openAcc,card:openCard,loan:openLoan,rec:openRec})[arg]?({acc:openAcc,card:openCard,loan:openLoan,rec:openRec})[arg](null):openBudget()}
+  else if(a==='chopen'){closeForm();({acc:openAcc,card:openCard,cardbulk:openCardBulk,loan:openLoan,rec:openRec})[arg]?({acc:openAcc,card:openCard,cardbulk:openCardBulk,loan:openLoan,rec:openRec})[arg](null):openBudget()}
   else if(a==='newtxn'){closeForm();openTxn(null,arg);if(arg==='voice')focusVoice()}
   else if(a==='txn')openTxn(arg==='new'?null:arg);
   else if(a==='acc')openAcc(arg==='new'?null:arg);
