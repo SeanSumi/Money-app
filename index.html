@@ -130,6 +130,8 @@ nav button.on span{background:var(--field);border-radius:14px;padding:0 16px}
 .bigbtn .bi{font-size:30px;width:52px;height:52px;border-radius:15px;background:var(--field);display:flex;align-items:center;justify-content:center;flex:none}
 .bigbtn small{display:block;font-size:12px;font-weight:400;color:var(--mute);margin-top:2px}
 .area{display:block;width:100%;background:var(--card);border:0;border-radius:14px;padding:12px;font:inherit;color:var(--ink);resize:vertical;outline:none;min-height:130px;margin:0 0 10px}
+.seg.sc{overflow-x:auto}
+.seg.sc button{flex:none;padding:7px 12px;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -214,6 +216,7 @@ function allTags(){const m={};S.txns.forEach(x=>(x.tags||[]).forEach(t=>m[t]=(m[
 const KICON={income:'💰',card:'💳',loan:'🏦',fixed:'📌',other:'👛'};
 const TI={'ホーム':'🏡','取引':'🧾','収支':'💸','予算':'🎯','資産':'💎','設定':'⚙️','マネー管理':'👛'};
 const cardRule=c=>(num(c.closing)?num(c.closing)+'日締め':'月末締め')+'・'+['当月','翌月','翌々月'][c.offset==null?1:num(c.offset)]+(num(c.payDay)||27)+'日払い';
+const cardPayName=c=>c.name+(c.name.includes('カード')?'支払い':'カード支払い');
 const catName=id=>(S.cats.find(c=>c.id===id)||{name:'未分類'}).name;
 const payName=t=>t.card?(S.cards.find(c=>c.id===t.card)||{name:'カード'}).name:(S.accounts.find(a=>a.id===t.acc)||{name:'口座'}).name;
 
@@ -297,7 +300,7 @@ function homeV(){
   if(tb>0){const p=s.exp/tb;h+=`<div class="sec">予算<button data-a="tab:budget">詳しく</button></div><div class="list"><div class="li" style="display:block"><div style="display:flex;justify-content:space-between"><span>支出 ${yen(s.exp)} / ${yen(tb)}</span><b class="${p>1?'neg':''}">${yen(tb-s.exp)} ${p>1?'超過':'残り'}</b></div><div class="bar"><i class="${p>1?'over':p>.85?'near':''}" style="width:${Math.min(100,p*100)}%"></i></div></div></div>`}
   /* 次の支払い */
   const up=[];
-  S.cards.forEach(c=>{const i=cardInfo(c);if(i.next)up.push({d:i.next.pay,n:c.name+' 引き落とし',a:i.next.total,i:'💳'})});
+  S.cards.forEach(c=>{const i=cardInfo(c);if(i.next)up.push({d:i.next.pay,n:cardPayName(c),a:i.next.total,i:'💳'})});
   S.loans.forEach(l=>{if(num(l.monthly)>0&&l.payDay&&loanState(l).bal>0){let d=dayStr(ymOf(t),num(l.payDay));if(d<=t)d=dayStr(addM(ymOf(t),1),num(l.payDay));up.push({d,n:l.name+' 返済',a:num(l.monthly),i:'🏦'})}});
   up.sort((a,b)=>a.d<b.d?-1:1);
   if(up.length)h+=`<div class="sec">これからの支払い</div><div class="list">${up.slice(0,4).map(u=>`<div class="li"><span class="ic">${u.i}</span><div class="l"><div class="t">${esc(u.n)}</div><div class="s">${mdLabel(u.d)}</div></div><div class="r">${yen(u.a)}</div></div>`).join('')}</div>`;
@@ -360,10 +363,10 @@ function assetsV(){
   h+=S.loans.length?`<div class="list">${S.loans.map(l=>{const st=loanState(l),p=loanProj(l,st.bal);const sub=p?(p.done?'完済済み 🎉':p.never?'返済額が利息以下です':'完済見込み '+ymLabel(p.end)+'ごろ'):'月々の返済額を設定すると完済日を計算します';return`<button class="li" data-a="loan:${l.id}"><span class="ic">🏦</span><div class="l"><div class="t">${esc(l.name)}</div><div class="s">${esc(sub)}</div></div><div class="r">${yen(st.bal)}</div></button>`}).join('')}</div>`:`<div class="note">ローンを追加すると、返済のたびに元金と利息を分けて残高を減らします。</div>`;
   return h;
 }
-const KINDS={income:'給与・収入',card:'カード引き落とし',loan:'ローン返済',fixed:'固定費',other:'現金・口座'};
+const KINDS={income:'給与・収入',card:'カード支払い',loan:'ローン返済',fixed:'固定費',other:'現金・口座'};
 function paymentsOf(m){
   const t=today(),cur=ymOf(t),out=[];
-  S.cards.forEach(c=>cardInfo(c).st.forEach(s=>{if(ymOf(s.pay)===m)out.push({date:s.pay,name:c.name,sub:Number(s.key.slice(5))+'月締め・'+s.n+'件',kind:'card',amount:s.total,done:s.pay<=t,act:'card:'+c.id})}));
+  S.cards.forEach(c=>cardInfo(c).st.forEach(s=>{if(ymOf(s.pay)===m)out.push({date:s.pay,name:cardPayName(c),sub:Number(s.key.slice(5))+'月締め・'+s.n+'件',kind:'card',amount:s.total,done:s.pay<=t,act:'card:'+c.id})}));
   S.txns.forEach(x=>{
     if(ymOf(x.date)!==m)return;
     if(x.type==='income')out.push({date:x.date,name:x.memo||'収入',sub:payName(x)+' に入金',kind:'income',amount:x.amount,done:x.date<=t,act:'txn:'+x.id});
@@ -394,11 +397,11 @@ function payV(){
   <div class="cols"><div><span>収入</span><b class="pos">${yen(income)}</b></div><div><span>支払い合計</span><b>${yen(payTotal)}</b></div><div><span>うち予定</span><b>${yen(payPlan)}</b></div></div></div>
   <div class="sec">種類別</div><div class="list"><div class="li"><span>${KICON.income} ${KINDS.income}</span><b class="pos">+${yen(income).replace('-','')}</b></div>${['card','loan','fixed','other'].map(k=>{const a=sum(pays.filter(p=>p.kind===k));return`<div class="li"><span>${KICON[k]} ${KINDS[k]}</span><span><b>${yen(a)}</b> <span class="s">${payTotal?Math.round(a/payTotal*100):0}%</span></span></div>`}).join('')}</div>
   <div class="sec">一覧</div>
-  <div class="seg">${[['all','すべて'],['income','収入'],['card','カード'],['loan','ローン'],['fixed','固定費'],['other','現金']].map(o=>`<button data-a="pf:${o[0]}" class="${pf===o[0]?'on':''}">${o[1]}</button>`).join('')}</div>`;
+  <div class="seg sc">${[['all','すべて'],['income','収入'],['card','カード支払い'],['loan','ローン'],['fixed','固定費'],['other','現金']].map(o=>`<button data-a="pf:${o[0]}" class="${pf===o[0]?'on':''}">${o[1]}</button>`).join('')}</div>`;
   const list=pf==='all'?all:all.filter(p=>p.kind===pf);
   if(!list.length)return h+`<div class="empty"><p>この月の該当はありません</p></div>`;
   return h+`<div class="list">${list.map(p=>`<button class="li" data-a="${p.act}"><span class="ic">${KICON[p.kind]}</span><div class="l"><div class="t">${esc(p.name)}</div><div class="s">${mdLabel(p.date)} ・ ${KINDS[p.kind]}${p.sub?' ・ '+esc(p.sub):''}</div></div><div class="r ${p.kind==='income'?'pos':''}">${p.kind==='income'?'+':''}${yen(p.amount)}<div class="s" style="${p.done?'':'color:var(--warn)'}">${p.done?(p.kind==='income'?'入金済':'済'):'予定'}</div></div></button>`).join('')}</div>
-  <div class="note">カード払いの買い物は、引き落とし日にまとめて「カード引き落とし」として表示されます。</div>`;
+  <div class="note">カード払いの買い物は、引き落とし日にまとめて「カード支払い」として表示されます。</div>`;
 }
 function settingsV(){
   return head('設定')+`<div class="sec">支出カテゴリ</div><div class="list">${S.cats.map(c=>`<div class="catrow"><input class="emo" type="text" data-cicon="${c.id}" value="${esc(catIcon(c.id))}" maxlength="4" aria-label="アイコン"><input type="text" data-cat="${c.id}" value="${esc(c.name)}" aria-label="カテゴリ名"><button data-a="catdel:${c.id}">削除</button></div>`).join('')}<button class="li" data-a="catadd" style="color:var(--acc)">＋ カテゴリを追加</button></div>
