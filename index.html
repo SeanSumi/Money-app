@@ -62,6 +62,14 @@ nav{position:fixed;left:0;right:0;bottom:0;background:color-mix(in srgb,var(--ca
 nav button{flex:1;border:0;background:none;color:var(--mute);padding:10px 0 9px;min-height:64px;font-size:13px;font-weight:600;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
 nav button span{font-size:26px;line-height:1.1}
 nav button.on{color:var(--acc)}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;background:var(--card);border-radius:14px;padding:6px}
+.cal .wd{text-align:center;font-size:11px;color:var(--mute);padding:3px 0}
+.cal button{border:0;background:none;min-height:58px;border-radius:9px;padding:3px 1px;display:flex;flex-direction:column;align-items:center;gap:1px;color:var(--ink);font-size:13px;overflow:hidden}
+.cal button.sel{background:var(--field);outline:2px solid var(--acc)}
+.cal button.today b{background:var(--acc);color:#fff;border-radius:10px;padding:0 6px}
+.cal button.out{visibility:hidden}
+.cal .am{font-size:10px;color:var(--mute);white-space:nowrap}
+.cal .mk{font-size:11px;line-height:1;height:12px;white-space:nowrap}
 .fab{position:fixed;right:18px;bottom:calc(84px + env(safe-area-inset-bottom));width:56px;height:56px;border-radius:28px;border:0;background:var(--acc);color:#fff;font-size:30px;line-height:1;box-shadow:0 4px 14px rgba(0,0,0,.28);z-index:6}
 .sheet-wrap{position:fixed;inset:0;z-index:20;display:flex;align-items:flex-end;justify-content:center}
 .sheet-wrap.hidden{display:none}
@@ -154,7 +162,7 @@ nav button.on span{background:var(--field);border-radius:14px;padding:0 16px}
   <button data-a="tab:home" data-t="home"><span>⌂</span>ホーム</button>
   <button data-a="tab:txns" data-t="txns"><span>☰</span>取引</button>
   <button data-a="tab:pay" data-t="pay"><span>⇄</span>収支</button>
-  <button data-a="tab:budget" data-t="budget"><span>◔</span>予算</button>
+  <button data-a="tab:cal" data-t="cal"><span>📅</span>カレンダー</button>
   <button data-a="tab:assets" data-t="assets"><span>¥</span>資産</button>
 </nav>
 <div class="sheet-wrap hidden" id="sheet"></div>
@@ -228,7 +236,7 @@ const parseTags=str=>{const o=[];String(str||'').split(/[\s,、#＃:：]+/).forE
 const tagStr=a=>(a||[]).map(t=>'#'+t).join(' ');
 function allTags(){const m={};S.txns.forEach(x=>(x.tags||[]).forEach(t=>m[t]=(m[t]||0)+1));S.recs.forEach(r=>(r.tags||[]).forEach(t=>{if(!m[t])m[t]=0}));return Object.keys(m).map(t=>({t,n:m[t]})).sort((a,b)=>b.n-a.n||(a.t<b.t?-1:1))}
 const KICON={income:'💰',card:'💳',loan:'🏦',fixed:'📌',other:'👛'};
-const TI={'円グラフ':'🥧','ホーム':'🏡','取引':'🧾','収支':'💸','予算':'🎯','資産':'💎','設定':'⚙️','マネー管理':'👛'};
+const TI={'カレンダー':'📅','円グラフ':'🥧','ホーム':'🏡','取引':'🧾','収支':'💸','予算':'🎯','資産':'💎','設定':'⚙️','マネー管理':'👛'};
 const cardRule=c=>(num(c.closing)?num(c.closing)+'日締め':'月末締め')+'・'+['当月','翌月','翌々月'][c.offset==null?1:num(c.offset)]+(num(c.payDay)||27)+'日払い';
 const cardPayName=c=>c.name.includes('カード')?c.name:c.name+'カード';
 const isLoanName=n=>/ローン|借入|借り入れ|奨学金/.test(String(n||''));
@@ -304,6 +312,33 @@ function pieSvg(rows,total){
     g+=`<path d="M${P(R,a0)} A${R} ${R} 0 ${lg} 1 ${P(R,a1)} L${P(r,a1)} A${r} ${r} 0 ${lg} 0 ${P(r,a0)} Z" fill="${w.color}" stroke="#fff" stroke-width="1"/>`;a0=a1});
   return`<svg viewBox="0 0 200 200" style="width:230px;max-width:70%;display:block;margin:6px auto" role="img" aria-label="カテゴリ別の支出の円グラフ">${g}<text x="100" y="95" text-anchor="middle" font-size="11" fill="#7b8794">支出合計</text><text x="100" y="115" text-anchor="middle" font-size="15" font-weight="700" fill="currentColor">${yen(total)}</text></svg>`;
 }
+let calDay='';
+const shortYen=n=>n>=10000?(Math.round(n/1000)/10)+'万':String(n);
+function calV(){
+  if(!S.accounts.length)return onboarding();
+  const pays=paymentsOf(mon),byD={};
+  S.txns.forEach(x=>{if(ymOf(x.date)===mon&&x.type==='expense'){(byD[x.date]=byD[x.date]||{ex:0,mk:new Set()}).ex+=x.amount}});
+  pays.forEach(p=>{if(p.kind==='income'||p.kind==='card'||p.kind==='loan'||(p.kind==='fixed'&&!p.done)){(byD[p.date]=byD[p.date]||{ex:0,mk:new Set()}).mk.add(p.kind==='income'?'💰':p.kind==='card'?'💳':p.kind==='loan'?'🏦':'📌')}});
+  const t=today();
+  if(!calDay||ymOf(calDay)!==mon)calDay=ymOf(t)===mon?t:mon+'-01';
+  const first=new Date(Number(mon.slice(0,4)),Number(mon.slice(5,7))-1,1),last=new Date(Number(mon.slice(0,4)),Number(mon.slice(5,7)),0).getDate();
+  const monExp=S.txns.filter(x=>ymOf(x.date)===mon&&x.type==='expense').reduce((a,x)=>a+x.amount,0);
+  let h=head('カレンダー',ymLabel(mon))+`<div class="mnav"><button class="ib" data-a="mon:-1" aria-label="前の月">‹</button><b>${ymLabel(mon)}</b><button class="ib" data-a="mon:1" aria-label="次の月">›</button></div><div class="list"><div class="li"><span class="mute">この月の支出</span><b>${yen(monExp)}</b></div></div>`;
+  h+='<div class="cal">'+['日','月','火','水','木','金','土'].map(w=>`<div class="wd">${w}</div>`).join('');
+  for(let i=0;i<first.getDay();i++)h+='<button class="out" tabindex="-1"></button>';
+  for(let d=1;d<=last;d++){
+    const ds=mon+'-'+String(d).padStart(2,'0'),o=byD[ds];
+    h+=`<button data-a="cal:${ds}" class="${ds===calDay?'sel':''} ${ds===t?'today':''}" aria-label="${d}日"><b>${d}</b><span class="mk">${o?[...o.mk].join(''):''}</span><span class="am">${o&&o.ex?shortYen(o.ex):''}</span></button>`;
+  }
+  h+='</div><div class="note" style="margin-top:6px">💳カード引き落とし　🏦ローン返済　💰収入　📌固定費の予定　数字はその日の支出</div>';
+  const dayTx=S.txns.filter(x=>x.date===calDay).sort((a,b)=>b.amount-a.amount);
+  const bills=pays.filter(p=>p.date===calDay&&!String(p.act).startsWith('txn:'));
+  h+=`<div class="sec">${dLabel(calDay)}</div>`;
+  if(bills.length)h+=`<div class="list">${bills.map(p=>`<button class="li" data-a="${p.act}"><span class="ic">${KICON[p.kind]}</span><div class="l"><div class="t">${esc(p.name)}</div><div class="s">${KINDS[p.kind]}${p.sub?' ・ '+esc(p.sub):''} ・ ${p.done?'済':'予定'}</div></div><div class="r ${p.kind==='income'?'pos':''}">${p.kind==='income'?'+':''}${yen(p.amount)}</div></button>`).join('')}</div>`;
+  if(dayTx.length)h+=`<div class="list" style="margin-top:8px">${dayTx.map(txnRow).join('')}</div>`;
+  if(!bills.length&&!dayTx.length)h+=`<div class="empty"><p>この日の記録・予定はありません</p></div>`;
+  return h;
+}
 function chartV(){
   const cur=catTotals(mon),prv=catTotals(addM(mon,-1));
   let rows=Object.keys(cur).map(id=>({id,name:catName(id),icon:catIcon(id),amt:cur[id],prev:prv[id]||0})).sort((a,b)=>b.amt-a.amt);
@@ -322,7 +357,7 @@ function render(){
   ensureCats();
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===tab));
   $('#fab').style.display='';
-  $('#view').innerHTML=({home:homeV,txns:txnsV,pay:payV,budget:budgetV,assets:assetsV,settings:settingsV,chart:chartV})[tab]();
+  $('#view').innerHTML=({home:homeV,txns:txnsV,pay:payV,budget:budgetV,assets:assetsV,settings:settingsV,chart:chartV,cal:calV})[tab]();
 }
 const head=(t,sub)=>`<div class="title"><h1>${t} ${TI[t]||''}</h1><div class="rt"><small>${sub||''}</small>${tab==='settings'?'':'<button class="gear" data-a="tab:settings" aria-label="設定">⚙︎</button>'}</div></div>`;
 
@@ -479,6 +514,7 @@ function settingsV(){
   return head('設定')+`<div class="sec">支出カテゴリ</div><div class="list">${S.cats.map(c=>`<div class="catrow"><button class="emo emobtn" data-cemo="${c.id}" aria-label="アイコンを選ぶ">${esc(catIcon(c.id))}</button><input type="text" data-cat="${c.id}" value="${esc(c.name)}" aria-label="カテゴリ名"><button data-a="catdel:${c.id}">削除</button></div>`).join('')}<button class="li" data-a="catadd" style="color:var(--acc)">＋ カテゴリを追加</button></div>
   <div class="note">アイコンをタップすると、好きな絵文字を選べます。取引を記録するとき、カテゴリの一番下の「新しいカテゴリ…」からも追加できます。</div>
   <div class="sec">タグ</div>${allTags().length?`<div class="list">${allTags().map(x=>`<div class="catrow"><span>#</span><input type="text" data-tagname="${esc(x.t)}" value="${esc(x.t)}" aria-label="タグ名"><span class="cnt">${x.n}件</span><button data-a="tagdel:${esc(x.t)}">削除</button></div>`).join('')}</div><div class="note">名前を書き換えると、すべての取引のタグがまとめて変わります。</div>`:`<div class="note">取引を記録するときに「#旅行 #仕事」のようにタグを付けると、ここに並び、取引タブで絞り込めます。</div>`}
+  <div class="sec">予算</div><div class="list"><button class="li" data-a="tab:budget"><span class="ic">🎯</span><div class="l"><div class="t">予算（カテゴリ別）</div><div class="s">月ごとの上限を決めて、使いすぎを確認</div></div></button></div>
   <div class="sec">データ</div><div class="list">
   <button class="li" data-a="export"><span>データをコピー（バックアップ）</span></button>
   <button class="li" data-a="import"><span>バックアップから復元（貼り付け）</span></button>
@@ -1021,6 +1057,7 @@ document.addEventListener('click',e=>{
   else if(a==='budget')openBudget();
   else if(a==='catadd'){S.cats.push({id:uid('e'),name:'新しいカテゴリ',icon:'🏷️'});save();render()}
   else if(a==='tf'){tf=arg||'';render()}
+  else if(a==='cal'){calDay=arg.length>8?arg:calDay;render()}
   else if(a==='cf'){cf=arg||'';render()}
   else if(a==='fav'){const f=favs(6)[Number(arg)];if(f)openTxn(null,'manual',favTpl(f))}
   else if(a==='srt'){srt=arg;render()}
