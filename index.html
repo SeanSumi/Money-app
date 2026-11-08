@@ -270,7 +270,7 @@ async function initStore(){
 /* ===== 画面 ===== */
 function render(){
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===tab));
-  $('#fab').style.display=(tab==='settings'||!S.accounts.length)?'none':'';
+  $('#fab').style.display='';
   $('#view').innerHTML=({home:homeV,txns:txnsV,pay:payV,budget:budgetV,assets:assetsV,settings:settingsV})[tab]();
 }
 const head=(t,sub)=>`<div class="title"><h1>${t} ${TI[t]||''}</h1><div class="rt"><small>${sub||''}</small>${tab==='settings'?'':'<button class="gear" data-a="tab:settings" aria-label="設定">⚙︎</button>'}</div></div>`;
@@ -725,11 +725,19 @@ function openScanReview(items){
 }
 function openChooser(){
   F=null;
-  $('#sheet').innerHTML=`<div class="backdrop" data-a="closech"></div><div class="sheet" role="dialog" aria-label="入力方法"><div class="sh-h"><button data-a="closech">キャンセル</button><b>入力方法をえらぶ</b><span style="width:70px"></span></div><div class="sh-b">
+  const has=S.accounts.length>0;
+  const row=(a,ic,t)=>`<button class="li" data-a="chopen:${a}"><span class="ic">${ic}</span><div class="l"><div class="t">${t}</div></div><span class="mute">›</span></button>`;
+  let h=`<div class="backdrop" data-a="closech"></div><div class="sheet" role="dialog" aria-label="入力"><div class="sh-h"><button data-a="closech">キャンセル</button><b>入力</b><span style="width:70px"></span></div><div class="sh-b">`;
+  if(has){
+    h+=`<div class="dh" style="margin-top:0">お金の出入りを記録する（入力方法をえらぶ）</div>
   <button class="bigbtn" data-a="newtxn:manual"><span class="bi">✍️</span><span>手入力<small>金額やカテゴリを自分で入れる</small></span></button>
   <label class="bigbtn"><span class="bi">📷</span><span>写真・PDF<small>レシートや明細を撮る・選ぶと自動入力</small></span><input type="file" accept="image/*,application/pdf" multiple data-chscan="1" style="display:none"></label>
   <button class="bigbtn" data-a="newtxn:voice"><span class="bi">🎤</span><span>声・文章<small>「昨日 スーパーで3800円」と話す・打つ</small></span></button>
-  </div></div>`;
+  <div class="dh">そのほかの入力（手入力）</div><div class="list">${row('acc','🏧','口座を追加')}${row('card','💳','カードを追加')}${row('loan','🏦','ローンを追加')}${row('rec','📌','毎月の固定（給料・家賃など）を追加')}${row('budget','🎯','予算を設定')}</div>`;
+  }else{
+    h+=`<div class="dh" style="margin-top:0">はじめに、口座を追加しましょう</div><div class="list">${row('acc','🏧','口座を追加（いまの残高を入力）')}</div><div class="note">口座を追加すると、取引の記録（手入力・写真・声）や、カード・ローンなどの入力が使えるようになります。</div>`;
+  }
+  $('#sheet').innerHTML=h+`</div></div>`;
   $('#sheet').classList.remove('hidden');
 }
 function focusVoice(){const i=document.querySelector('[data-voice]');if(i&&i.focus)i.focus()}
@@ -762,6 +770,7 @@ document.addEventListener('click',e=>{
   else if(a==='pf'){pf=arg;render()}
   else if(a==='choose')openChooser();
   else if(a==='closech')closeForm();
+  else if(a==='chopen'){closeForm();({acc:openAcc,card:openCard,loan:openLoan,rec:openRec})[arg]?({acc:openAcc,card:openCard,loan:openLoan,rec:openRec})[arg](null):openBudget()}
   else if(a==='newtxn'){closeForm();openTxn(null,arg);if(arg==='voice')focusVoice()}
   else if(a==='txn')openTxn(arg==='new'?null:arg);
   else if(a==='acc')openAcc(arg==='new'?null:arg);
