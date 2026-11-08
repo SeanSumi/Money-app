@@ -218,7 +218,7 @@ const TI={'ホーム':'🏡','取引':'🧾','収支':'💸','予算':'🎯','�
 const cardRule=c=>(num(c.closing)?num(c.closing)+'日締め':'月末締め')+'・'+['当月','翌月','翌々月'][c.offset==null?1:num(c.offset)]+(num(c.payDay)||27)+'日払い';
 const cardPayName=c=>c.name+(c.name.includes('カード')?'支払い':'カード支払い');
 const catName=id=>(S.cats.find(c=>c.id===id)||{name:'未分類'}).name;
-const payName=t=>t.card?(S.cards.find(c=>c.id===t.card)||{name:'カード'}).name:(S.accounts.find(a=>a.id===t.acc)||{name:'口座'}).name;
+const payName=t=>t.card?'カード支払い（'+(S.cards.find(c=>c.id===t.card)||{name:'カード'}).name+'）':(S.accounts.find(a=>a.id===t.acc)||{name:'口座'}).name;
 
 /* ===== 固定の収入・支出 / ローン自動記録 ===== */
 function gen(){
