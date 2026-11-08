@@ -65,6 +65,19 @@ nav button.on{color:var(--acc)}
 .fab{position:fixed;right:18px;bottom:calc(84px + env(safe-area-inset-bottom));width:56px;height:56px;border-radius:28px;border:0;background:var(--acc);color:#fff;font-size:30px;line-height:1;box-shadow:0 4px 14px rgba(0,0,0,.28);z-index:6}
 .sheet-wrap{position:fixed;inset:0;z-index:20;display:flex;align-items:flex-end;justify-content:center}
 .sheet-wrap.hidden{display:none}
+#epick{z-index:40}
+.epk{position:relative;background:var(--bg);width:100%;max-width:620px;max-height:80vh;border-radius:24px 24px 0 0;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom)}
+.epk .eh{display:flex;gap:8px;align-items:center;padding:12px 14px 6px}
+.epk .eh input{flex:1;font-size:22px;text-align:center;background:var(--field);border:0;border-radius:10px;padding:8px;min-width:0}
+.epk .eh button{border:0;background:var(--acc);color:#fff;border-radius:10px;padding:10px 14px;font-size:14px}
+.epk .et{display:flex;gap:4px;overflow-x:auto;padding:4px 10px}
+.epk .et button{flex:none;border:0;background:none;font-size:20px;padding:6px 9px;border-radius:9px}
+.epk .et button.on{background:var(--field)}
+.epk .eg{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;overflow-y:auto;padding:6px 10px 14px}
+.epk .eg button{border:0;background:none;font-size:27px;padding:7px 0;border-radius:10px}
+.epk .eg button:active{background:var(--field)}
+.epk .hint{font-size:11px;color:var(--mute);padding:0 16px 2px}
+.emobtn{border:0;background:var(--field);border-radius:10px;font-size:22px;padding:4px 14px}
 .backdrop{position:absolute;inset:0;background:rgba(0,0,0,.4)}
 .sheet{position:relative;background:var(--bg);width:100%;max-width:620px;max-height:92vh;border-radius:16px 16px 0 0;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom)}
 .sh-h{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 10px}
@@ -145,6 +158,7 @@ nav button.on span{background:var(--field);border-radius:14px;padding:0 16px}
   <button data-a="tab:assets" data-t="assets"><span>¥</span>資産</button>
 </nav>
 <div class="sheet-wrap hidden" id="sheet"></div>
+<div class="sheet-wrap hidden" id="epick"></div>
 
 <script>
 const LS='money-app-v2';
@@ -315,27 +329,36 @@ function txnRow(x){
   const ico=x.type==='income'?'💰':x.type==='loanpay'?'🏦':catIcon(x.cat);
   return`<button class="li" data-a="txn:${x.id}"><span class="ic">${ico}</span><div class="l"><div class="t">${esc(title)}</div><div class="s">${mdLabel(x.date)} ・ ${esc(sub)}${x.tags&&x.tags.length?' ・ '+x.tags.map(t=>'#'+esc(t)).join(' '):''}</div></div><div class="r ${cls}">${sign}${yen(x.amount).replace('-','')}</div></button>`;
 }
+let cf='',srt='date',allp=false;
 function txnsV(){
   if(!S.accounts.length)return onboarding();
   const tags=allTags();
   if(tf&&!tags.some(x=>x.t===tf))tf='';
+  if(cf&&cf!=='income'&&cf!=='loanpay'&&!S.cats.some(c=>c.id===cf))cf='';
   let h=head('取引');
-  if(tags.length)h+=`<div class="chiprow"><button data-a="tf:" class="${tf?'':'on'}">すべて</button>${tags.map(x=>`<button data-a="tf:${esc(x.t)}" class="${tf===x.t?'on':''}">#${esc(x.t)} ${x.n}</button>`).join('')}</div>`;
-  let list;
-  if(tf){
-    list=S.txns.filter(x=>(x.tags||[]).includes(tf));
-    const ex=list.filter(x=>x.type==='expense').reduce((a,x)=>a+x.amount,0),inc=list.filter(x=>x.type==='income').reduce((a,x)=>a+x.amount,0);
-    h+=`<div class="list"><div class="li"><span class="mute">#${esc(tf)} の支出（全期間）</span><b>${yen(ex)}</b></div>${inc?`<div class="li"><span class="mute">収入</span><b class="pos">${yen(inc)}</b></div>`:''}<div class="li"><span class="mute">件数</span><b>${list.length}件</b></div></div>`;
-  }else{
-    const s=mSum(mon);
-    h+=`<div class="mnav"><button class="ib" data-a="mon:-1" aria-label="前の月">‹</button><b>${ymLabel(mon)}</b><button class="ib" data-a="mon:1" aria-label="次の月">›</button></div>
-  <div class="list"><div class="li"><span class="mute">収入</span><b class="pos">${yen(s.inc)}</b></div><div class="li"><span class="mute">支出</span><b>${yen(s.exp)}</b></div><div class="li"><span class="mute">ローン返済</span><b>${yen(s.rep)}</b></div></div>`;
-    list=S.txns.filter(x=>ymOf(x.date)===mon);
+  const used=new Set(S.txns.filter(x=>x.type==='expense').map(x=>x.cat));
+  const cats=S.cats.filter(c=>used.has(c.id));
+  h+=`<div class="chiprow"><button data-a="cf:" class="${cf?'':'on'}">すべて</button><button data-a="cf:income" class="${cf==='income'?'on':''}">💰 収入</button>${cats.map(c=>`<button data-a="cf:${c.id}" class="${cf===c.id?'on':''}">${esc(catIcon(c.id))} ${esc(c.name)}</button>`).join('')}<button data-a="cf:loanpay" class="${cf==='loanpay'?'on':''}">🏦 ローン返済</button></div>`;
+  if(tags.length)h+=`<div class="chiprow"><button data-a="tf:" class="${tf?'':'on'}">タグ：すべて</button>${tags.map(x=>`<button data-a="tf:${esc(x.t)}" class="${tf===x.t?'on':''}">#${esc(x.t)} ${x.n}</button>`).join('')}</div>`;
+  h+=`<div class="seg sc"><button data-a="allp:0" class="${allp?'':'on'}">月ごと</button><button data-a="allp:1" class="${allp?'on':''}">全期間</button><button data-a="srt:date" class="${srt==='date'?'on':''}">日付順</button><button data-a="srt:big" class="${srt==='big'?'on':''}">金額が大きい順</button><button data-a="srt:small" class="${srt==='small'?'on':''}">金額が小さい順</button></div>`;
+  if(!allp)h+=`<div class="mnav"><button class="ib" data-a="mon:-1" aria-label="前の月">‹</button><b>${ymLabel(mon)}</b><button class="ib" data-a="mon:1" aria-label="次の月">›</button></div>`;
+  let list=S.txns.filter(x=>(allp||ymOf(x.date)===mon)&&(!tf||(x.tags||[]).includes(tf))&&(!cf||(cf==='income'?x.type==='income':cf==='loanpay'?x.type==='loanpay':(x.type==='expense'&&x.cat===cf))));
+  const sm=t=>list.filter(x=>x.type===t).reduce((a,x)=>a+x.amount,0);
+  const ex=sm('expense'),inc=sm('income'),rep=sm('loanpay');
+  const label=(cf?(cf==='income'?'収入':cf==='loanpay'?'ローン返済':catIcon(cf)+' '+catName(cf)):'すべて')+(tf?' ＋ #'+tf:'')+'（'+(allp?'全期間':ymLabel(mon))+'）';
+  h+=`<div class="list"><div class="li"><span class="mute">${esc(label)}</span><b>${list.length}件</b></div>`
+    +(ex||!cf?`<div class="li"><span class="mute">支出</span><b>${yen(ex)}</b></div>`:'')
+    +(inc||!cf||cf==='income'?`<div class="li"><span class="mute">収入</span><b class="pos">${yen(inc)}</b></div>`:'')
+    +(rep||!cf?`<div class="li"><span class="mute">ローン返済</span><b>${yen(rep)}</b></div>`:'')
+    +(list.length?`<div class="li"><span class="mute">1件あたり平均</span><b>${yen(Math.round(list.reduce((a,x)=>a+x.amount,0)/list.length))}</b></div>`:'')+`</div>`;
+  if(!list.length)return h+`<div class="empty" style="margin-top:14px"><p>該当する取引はありません</p></div>`;
+  if(srt!=='date'){
+    list=list.sort((a,b)=>srt==='big'?b.amount-a.amount:a.amount-b.amount);
+    return h+`<div class="list" style="margin-top:12px">${list.map(txnRow).join('')}</div>`;
   }
   list=list.sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0);
-  if(!list.length)return h+`<div class="empty" style="margin-top:14px"><p>${tf?'このタグの取引はありません':'この月の取引はありません'}</p></div>`;
   let cur='',buf='';
-  list.forEach(x=>{if(x.date!==cur){if(buf)h+=`<div class="list">${buf}</div>`;cur=x.date;buf='';h+=`<div class="dh">${tf?x.date.slice(0,4)+'年':''}${dLabel(cur)}</div>`}buf+=txnRow(x)});
+  list.forEach(x=>{if(x.date!==cur){if(buf)h+=`<div class="list">${buf}</div>`;cur=x.date;buf='';h+=`<div class="dh">${allp?x.date.slice(0,4)+'年':''}${dLabel(cur)}</div>`}buf+=txnRow(x)});
   return h+`<div class="list">${buf}</div>`;
 }
 function budgetV(){
@@ -356,11 +379,11 @@ function assetsV(){
   if(!S.accounts.length)return onboarding();
   const T=totals();
   let h=head('資産',yen(T.net));
-  h+=`<div class="sec">口座・現金<button data-a="acc:new">追加</button></div><div class="list">${S.accounts.map(a=>`<button class="li" data-a="acc:${a.id}"><span class="ic">🏧</span><div class="l"><div class="t">${esc(a.name)}</div></div><div class="r">${yen(accBal(a))}</div></button>`).join('')}</div>`;
+  h+=`<div class="sec">口座・現金<button data-a="acc:new">追加</button></div><div class="list">${S.accounts.map(a=>`<button class="li" data-a="acc:${a.id}"><span class="ic">${esc(a.icon||'🏧')}</span><div class="l"><div class="t">${esc(a.name)}</div></div><div class="r">${yen(accBal(a))}</div></button>`).join('')}</div>`;
   h+=`<div class="sec">クレジットカード<button data-a="card:new">追加</button></div>`;
-  h+=S.cards.length?`<div class="list">${S.cards.map(c=>{const i=cardInfo(c);return`<button class="li" data-a="card:${c.id}"><span class="ic">💳</span><div class="l"><div class="t">${esc(c.name)}</div><div class="s">${cardRule(c)}　${i.next?'次回 '+mdLabel(i.next.pay)+' '+yen(i.next.total):'未払いなし'}</div></div><div class="r">${yen(i.unpaid)}</div></button>`}).join('')}</div>`:`<div class="note">カードを追加すると、締め日・引き落とし日に合わせて未払い額を自動計算します。</div>`;
+  h+=S.cards.length?`<div class="list">${S.cards.map(c=>{const i=cardInfo(c);return`<button class="li" data-a="card:${c.id}"><span class="ic">${esc(c.icon||'💳')}</span><div class="l"><div class="t">${esc(c.name)}</div><div class="s">${cardRule(c)}　${i.next?'次回 '+mdLabel(i.next.pay)+' '+yen(i.next.total):'未払いなし'}</div></div><div class="r">${yen(i.unpaid)}</div></button>`}).join('')}</div>`:`<div class="note">カードを追加すると、締め日・引き落とし日に合わせて未払い額を自動計算します。</div>`;
   h+=`<div class="sec">ローン<button data-a="loan:new">追加</button></div>`;
-  h+=S.loans.length?`<div class="list">${S.loans.map(l=>{const st=loanState(l),p=loanProj(l,st.bal);const sub=p?(p.done?'完済済み 🎉':p.never?'返済額が利息以下です':'完済見込み '+ymLabel(p.end)+'ごろ'):'月々の返済額を設定すると完済日を計算します';return`<button class="li" data-a="loan:${l.id}"><span class="ic">🏦</span><div class="l"><div class="t">${esc(l.name)}</div><div class="s">${esc(sub)}</div></div><div class="r">${yen(st.bal)}</div></button>`}).join('')}</div>`:`<div class="note">ローンを追加すると、返済のたびに元金と利息を分けて残高を減らします。</div>`;
+  h+=S.loans.length?`<div class="list">${S.loans.map(l=>{const st=loanState(l),p=loanProj(l,st.bal);const sub=p?(p.done?'完済済み 🎉':p.never?'返済額が利息以下です':'完済見込み '+ymLabel(p.end)+'ごろ'):'月々の返済額を設定すると完済日を計算します';return`<button class="li" data-a="loan:${l.id}"><span class="ic">${esc(l.icon||'🏦')}</span><div class="l"><div class="t">${esc(l.name)}</div><div class="s">${esc(sub)}</div></div><div class="r">${yen(st.bal)}</div></button>`}).join('')}</div>`:`<div class="note">ローンを追加すると、返済のたびに元金と利息を分けて残高を減らします。</div>`;
   return h;
 }
 const KINDS={income:'給与・収入',card:'カード支払い',loan:'ローン返済',fixed:'固定費',other:'現金・口座'};
@@ -400,12 +423,13 @@ function payV(){
   <div class="seg sc">${[['all','すべて'],['income','収入'],['card','カード支払い'],['loan','ローン'],['fixed','固定費'],['other','現金']].map(o=>`<button data-a="pf:${o[0]}" class="${pf===o[0]?'on':''}">${o[1]}</button>`).join('')}</div>`;
   const list=pf==='all'?all:all.filter(p=>p.kind===pf);
   if(!list.length)return h+`<div class="empty"><p>この月の該当はありません</p></div>`;
+  h+=`<div class="list"><div class="li"><span class="mute">表示中の合計（${list.length}件）</span><b>${yen(sum(list))}</b></div></div>`;
   return h+`<div class="list">${list.map(p=>`<button class="li" data-a="${p.act}"><span class="ic">${KICON[p.kind]}</span><div class="l"><div class="t">${esc(p.name)}</div><div class="s">${mdLabel(p.date)} ・ ${KINDS[p.kind]}${p.sub?' ・ '+esc(p.sub):''}</div></div><div class="r ${p.kind==='income'?'pos':''}">${p.kind==='income'?'+':''}${yen(p.amount)}<div class="s" style="${p.done?'':'color:var(--warn)'}">${p.done?(p.kind==='income'?'入金済':'済'):'予定'}</div></div></button>`).join('')}</div>
   <div class="note">カード払いの買い物は、引き落とし日にまとめて「カード支払い」として表示されます。</div>`;
 }
 function settingsV(){
-  return head('設定')+`<div class="sec">支出カテゴリ</div><div class="list">${S.cats.map(c=>`<div class="catrow"><input class="emo" type="text" data-cicon="${c.id}" value="${esc(catIcon(c.id))}" maxlength="4" aria-label="アイコン"><input type="text" data-cat="${c.id}" value="${esc(c.name)}" aria-label="カテゴリ名"><button data-a="catdel:${c.id}">削除</button></div>`).join('')}<button class="li" data-a="catadd" style="color:var(--acc)">＋ カテゴリを追加</button></div>
-  <div class="note">アイコンは絵文字をそのまま入力して変えられます。取引を記録するとき、カテゴリの一番下の「新しいカテゴリ…」からも追加できます。</div>
+  return head('設定')+`<div class="sec">支出カテゴリ</div><div class="list">${S.cats.map(c=>`<div class="catrow"><button class="emo emobtn" data-cemo="${c.id}" aria-label="アイコンを選ぶ">${esc(catIcon(c.id))}</button><input type="text" data-cat="${c.id}" value="${esc(c.name)}" aria-label="カテゴリ名"><button data-a="catdel:${c.id}">削除</button></div>`).join('')}<button class="li" data-a="catadd" style="color:var(--acc)">＋ カテゴリを追加</button></div>
+  <div class="note">アイコンをタップすると、好きな絵文字を選べます。取引を記録するとき、カテゴリの一番下の「新しいカテゴリ…」からも追加できます。</div>
   <div class="sec">タグ</div>${allTags().length?`<div class="list">${allTags().map(x=>`<div class="catrow"><span>#</span><input type="text" data-tagname="${esc(x.t)}" value="${esc(x.t)}" aria-label="タグ名"><span class="cnt">${x.n}件</span><button data-a="tagdel:${esc(x.t)}">削除</button></div>`).join('')}</div><div class="note">名前を書き換えると、すべての取引のタグがまとめて変わります。</div>`:`<div class="note">取引を記録するときに「#旅行 #仕事」のようにタグを付けると、ここに並び、取引タブで絞り込めます。</div>`}
   <div class="sec">データ</div><div class="list">
   <button class="li" data-a="export"><span>データをコピー（バックアップ）</span></button>
@@ -417,11 +441,40 @@ function settingsV(){
 }
 
 /* ===== 入力シート ===== */
+const EMO={
+'人気':'🏷️ 🍚 🍜 🍣 🍔 🍕 ☕ 🍺 🛒 🏠 💡 💧 🔥 📱 🌐 🚃 🚗 ⛽ 👕 💄 💊 🏥 🎬 🎮 📚 🎓 🎁 ✈️ 🏨 🐶 🐱 👶 💰 💴 💳 🏦 🏧 📌 👛 🧾 🔧 🛠️ 💼 📈 🎉 ❤️ ⭐ ✨',
+'食':'🍚 🍙 🍘 🍞 🥐 🥪 🌭 🍔 🍟 🍕 🥗 🍝 🍜 🍲 🍛 🍣 🍱 🍤 🍢 🍡 🥟 🍳 🥩 🍗 🥓 🧀 🥚 🥛 🍎 🍌 🍇 🍓 🍊 🍉 🥑 🥕 🍰 🎂 🍩 🍪 🍫 🍦 🍺 🍻 🍷 🍸 ☕ 🍵 🧃 🥤',
+'暮らし':'🏠 🏢 🛏️ 🛋️ 🚿 🛁 🧻 🧴 🧼 🧹 🧺 💡 🔌 🔋 💧 🔥 ⚡ 📺 💻 🖥️ 📱 ☎️ 🌐 📦 📮 🔑 🪑 🧸 🪴 🕯️ 🛒 🛍️ 👜 🧾 🪙',
+'移動':'🚃 🚇 🚌 🚕 🚗 🚙 🏍️ 🚲 🛵 ✈️ 🚄 🚢 ⛽ 🅿️ 🛣️ 🗺️ 🧳 🏨 ⛱️ 🏖️ ⛰️ 🏕️ 🗼 🎡 🎫',
+'服・美容':'👕 👖 👗 👔 🧥 👟 👠 🎒 👓 💍 ⌚ 🧢 💄 💅 💇 🪞 🧖 🧴 🪮 🧦',
+'健康':'💊 🏥 🩺 🦷 👓 💉 🩹 🏃 🏋️ 🧘 ⚽ 🎾 🏊 🚴 ⛳ 🥋 🧠 😴',
+'遊び':'🎬 🎮 🎲 🎯 🎤 🎧 🎵 🎸 🎹 📷 🎨 🖌️ 📚 📖 ✏️ 🎓 🎁 🎉 🎂 🎈 🎪 🎭 🎰 🎳 🏟️ 🎣 🏕️ 🧩',
+'生き物':'🐶 🐱 🐭 🐹 🐰 🦊 🐻 🐼 🐨 🐯 🦁 🐮 🐷 🐸 🐵 🐔 🐧 🐦 🐠 🐢 🌱 🌸 🌻 🌳 🍀 👶 👦 👧 👨 👩 👴 👵 👪',
+'お金':'💰 💴 💵 💶 💷 💳 🏦 🏧 🪙 💎 🧾 📈 📉 📊 💹 🤝 💼 🏷️ 📌 📎 🔒 🏆 🎁 🧧',
+'記号':'⭐ ✨ ❤️ 🧡 💛 💚 💙 💜 🖤 🤍 ✅ ❌ ⚠️ ❓ ❗ 🔴 🟠 🟡 🟢 🔵 🟣 ⚫ ⚪ 🔺 🔷 🔔 🚩 🏁 📍 🔖 🗓️ ⏰ 🌙 ☀️ ☁️ ☔ ❄️'};
+let EP=null;
+function pickEmoji(cur,cb){
+  EP={cb,tab:Object.keys(EMO)[0],cur:cur||''};renderEmoji();$('#epick').classList.remove('hidden');
+}
+function renderEmoji(){
+  const ks=Object.keys(EMO);
+  $('#epick').innerHTML=`<div class="backdrop" data-eclose="1"></div><div class="epk" role="dialog" aria-label="絵文字を選ぶ"><div class="eh"><input id="eself" type="text" value="${esc(EP.cur)}" placeholder="🙂" aria-label="絵文字" autocomplete="off"><button data-eok="1">決定</button><button data-eclose="1" style="background:var(--field);color:var(--ink)">閉じる</button></div><div class="hint">下から選ぶか、左の欄にキーボードの絵文字を直接入力できます</div><div class="et">${ks.map((k,i)=>`<button data-etab="${k}" class="${k===EP.tab?'on':''}" aria-label="${k}">${EMO[k].split(' ')[0]}</button>`).join('')}</div><div class="eg">${EMO[EP.tab].split(' ').map(e=>`<button data-epick="${e}">${e}</button>`).join('')}</div></div>`;
+}
+function closeEmoji(){EP=null;$('#epick').classList.add('hidden');$('#epick').innerHTML=''}
+document.addEventListener('click',e=>{
+  if(!EP)return;const el=e.target.closest('[data-eclose],[data-eok],[data-etab],[data-epick]');if(!el)return;
+  e.stopPropagation();
+  if(el.dataset.eclose)closeEmoji();
+  else if(el.dataset.etab){const keep=$('#eself')?$('#eself').value:EP.cur;EP.cur=keep;EP.tab=el.dataset.etab;renderEmoji()}
+  else if(el.dataset.epick){const cb=EP.cb;closeEmoji();cb(el.dataset.epick)}
+  else if(el.dataset.eok){const v=($('#eself').value||'').trim();const cb=EP.cb;closeEmoji();if(v)cb(v)}
+},true);
 function openForm(f){F=f;renderSheet();$('#sheet').classList.remove('hidden')}
 function closeForm(){F=null;$('#sheet').classList.add('hidden');$('#sheet').innerHTML=''}
 function fieldHtml(f,v){
   if(f.type==='seg')return`<div class="seg">${f.options.map(o=>`<button data-seg="${f.k}" data-v="${o[0]}" class="${v[f.k]===o[0]?'on':''}">${o[1]}</button>`).join('')}</div>`;
   if(f.type==='info')return`<div class="info">${f.html}</div>`;
+  if(f.type==='emoji')return`<div class="f"><label>${esc(f.label||'アイコン')}</label><button type="button" class="emobtn" data-emok="${f.k}" aria-label="絵文字を選ぶ">${esc(v[f.k]||f.dflt||'🙂')}</button></div>`;
   if(f.type==='voice')return`<div class="voice"><textarea rows="3" data-voice="1" placeholder="話す・打つ・貼り付け　例：昨日 スーパーで3800円" aria-label="声・文章で入力">${esc((F&&F.voiceText)||'')}</textarea><button class="vb" data-vb="mic" aria-label="音声入力">🎤</button><button class="vb go" data-vb="go">反映</button></div><div class="scanmsg" id="voicemsg"></div>`;
   if(f.type==='paychips')return`<div class="dh" style="margin:0 4px 6px">${esc(f.label)}</div><div class="chips">${f.options.map(o=>`<button data-payk="${f.k}" data-v="${esc(o[0])}" class="${v[f.k]===o[0]?'on':''}">${o[0][0]==='c'?'💳':'🏧'} ${esc(o[1].replace('（カード）',''))}</button>`).join('')}</div>`;
   if(f.type==='preview')return`<div class="list"><div class="info" id="bulkprev">${f.html}</div></div>`;
@@ -458,7 +511,7 @@ function openTxn(id,mode){
         if(v.method==='photo')f.splice(1,0,{type:'scan'});else if(v.method==='voice')f.splice(1,0,{type:'voice'});
       }
       if(v.type==='expense'){f.push({k:'cat',label:'カテゴリ',type:'select',options:[...S.cats.map(c=>[c.id,catIcon(c.id)+' '+c.name]),['__new','＋ 新しいカテゴリ…']]});
-        if(v.cat==='__new')f.push({k:'newicon',label:'アイコン（絵文字）',type:'text',ph:'🏷️'},{k:'newcat',label:'カテゴリ名',type:'text',ph:'例：ペット'});
+        if(v.cat==='__new')f.push({k:'newicon',label:'アイコン（絵文字）',type:'emoji',dflt:'🏷️'},{k:'newcat',label:'カテゴリ名',type:'text',ph:'例：ペット'});
         f.push({k:'pay',label:'支払い方法（口座・カード）',type:'paychips',options:payOpts()})}
       else if(v.type==='income'){if(String(v.pay||'')[0]!=='a'&&S.accounts[0])v.pay='a:'+S.accounts[0].id;f.push({k:'pay',label:'入金先の口座',type:'paychips',options:accOpts().map(o=>['a:'+o[0],o[1]])})}
       else{
@@ -484,24 +537,24 @@ function openTxn(id,mode){
 }
 function openAcc(id){
   const ex=id&&S.accounts.find(a=>a.id===id);
-  const v={name:ex?ex.name:'',bal:ex?accBal(ex):''};
+  const v={name:ex?ex.name:'',bal:ex?accBal(ex):'',icon:ex&&ex.icon||'🏧'};
   openForm({title:ex?'口座を編集':'口座を追加',vals:v,
-    fields:()=>[{k:'name',label:'名前',type:'text',ph:'例：普通預金'},{k:'bal',label:'現在の残高',type:'number',ph:'0'},{type:'info',html:'実際の残高を入れると、以降の取引で増減します。ズレたときはここで合わせ直せます。'}],
+    fields:()=>[{k:'icon',type:'emoji',dflt:'🏧'},{k:'name',label:'名前',type:'text',ph:'例：普通預金'},{k:'bal',label:'現在の残高',type:'number',ph:'0'},{type:'info',html:'実際の残高を入れると、以降の取引で増減します。ズレたときはここで合わせ直せます。'}],
     save:v=>{if(!v.name.trim())return'名前を入力してください';
-      if(ex){ex.name=v.name.trim();ex.opening=num(v.bal)-accBal(ex,true)}
-      else S.accounts.push({id:uid('a'),name:v.name.trim(),opening:num(v.bal)})},
+      if(ex){ex.name=v.name.trim();ex.icon=v.icon;ex.opening=num(v.bal)-accBal(ex,true)}
+      else S.accounts.push({id:uid('a'),name:v.name.trim(),icon:v.icon,opening:num(v.bal)})},
     del:ex?()=>{if(S.txns.some(x=>x.acc===ex.id)||S.cards.some(c=>c.acc===ex.id)||S.loans.some(l=>l.acc===ex.id)||S.recs.some(r=>r.acc===ex.id))return'この口座を使った取引や設定があるため削除できません';S.accounts=S.accounts.filter(a=>a.id!==ex.id)}:null});
 }
 function openCard(id){
   const ex=id&&S.cards.find(c=>c.id===id);
-  const v=ex?{name:ex.name,closing:ex.closing,payDay:ex.payDay,offset:String(ex.offset==null?1:ex.offset),acc:ex.acc}:{name:'',closing:15,payDay:10,offset:'1',acc:S.accounts[0]&&S.accounts[0].id};
+  const v=ex?{icon:ex.icon||'💳',name:ex.name,closing:ex.closing,payDay:ex.payDay,offset:String(ex.offset==null?1:ex.offset),acc:ex.acc}:{icon:'💳',name:'',closing:15,payDay:10,offset:'1',acc:S.accounts[0]&&S.accounts[0].id};
   openForm({title:ex?'カードを編集':'カードを追加',vals:v,
     fields:()=>{
-      const f=[{k:'name',label:'名前',type:'text',ph:'例：メインカード'},{k:'closing',label:'締め日（0=月末）',type:'number'},{k:'offset',label:'引き落とし月',type:'select',options:[['0','当月'],['1','翌月'],['2','翌々月']]},{k:'payDay',label:'引き落とし日',type:'number'},{k:'acc',label:'引き落とし口座',type:'select',options:accOpts()}];
+      const f=[{k:'icon',type:'emoji',dflt:'💳'},{k:'name',label:'名前',type:'text',ph:'例：メインカード'},{k:'closing',label:'締め日（0=月末）',type:'number'},{k:'offset',label:'引き落とし月',type:'select',options:[['0','当月'],['1','翌月'],['2','翌々月']]},{k:'payDay',label:'引き落とし日',type:'number'},{k:'acc',label:'引き落とし口座',type:'select',options:accOpts()}];
       if(ex){const i=cardInfo(ex);f.push({type:'info',html:`<b>${cardRule(ex)}</b>　未払い ${yen(i.unpaid)}<br>`+(i.st.filter(s=>s.pay>today()).map(s=>`${mdLabel(s.pay)} 引き落とし　${yen(s.total)}（${s.n}件）`).join('<br>')||'次回の引き落とし予定はありません')})}
       return f},
     save:v=>{if(!v.name.trim())return'名前を入力してください';if(!v.acc)return'先に口座を追加してください';
-      const o={name:v.name.trim(),closing:num(v.closing),payDay:num(v.payDay)||27,offset:num(v.offset),acc:v.acc};
+      const o={icon:v.icon,name:v.name.trim(),closing:num(v.closing),payDay:num(v.payDay)||27,offset:num(v.offset),acc:v.acc};
       if(ex)Object.assign(ex,o);else S.cards.push({id:uid('c'),...o})},
     del:ex?()=>{if(S.txns.some(x=>x.card===ex.id)||S.recs.some(r=>r.card===ex.id))return'このカードの取引があるため削除できません';S.cards=S.cards.filter(c=>c.id!==ex.id)}:null});
 }
@@ -609,14 +662,14 @@ function openCardBulk(){
 }
 function openLoan(id){
   const ex=id&&S.loans.find(l=>l.id===id),st=ex&&loanState(ex);
-  const v=ex?{name:ex.name,bal:st.bal,rate:ex.rate,monthly:ex.monthly,payDay:ex.payDay,acc:ex.acc}:{name:'',bal:'',rate:'',monthly:'',payDay:27,acc:S.accounts[0]&&S.accounts[0].id};
+  const v=ex?{icon:ex.icon||'🏦',name:ex.name,bal:st.bal,rate:ex.rate,monthly:ex.monthly,payDay:ex.payDay,acc:ex.acc}:{icon:'🏦',name:'',bal:'',rate:'',monthly:'',payDay:27,acc:S.accounts[0]&&S.accounts[0].id};
   openForm({title:ex?'ローンを編集':'ローンを追加',vals:v,
     fields:()=>{
-      const f=[{k:'name',label:'名前',type:'text',ph:'例：自動車ローン'},{k:'bal',label:'現在の残高',type:'number',ph:'0'},{k:'rate',label:'年利（%）',type:'number',ph:'例：3.5'},{k:'monthly',label:'月々の返済額',type:'number',ph:'0'},{k:'payDay',label:'返済日',type:'number'},{k:'acc',label:'引き落とし口座',type:'select',options:accOpts()}];
+      const f=[{k:'icon',type:'emoji',dflt:'🏦'},{k:'name',label:'名前',type:'text',ph:'例：自動車ローン'},{k:'bal',label:'現在の残高',type:'number',ph:'0'},{k:'rate',label:'年利（%）',type:'number',ph:'例：3.5'},{k:'monthly',label:'月々の返済額',type:'number',ph:'0'},{k:'payDay',label:'返済日',type:'number'},{k:'acc',label:'引き落とし口座',type:'select',options:accOpts()}];
       if(ex){const p=loanProj(ex,st.bal);f.push({type:'info',html:`返済済み　元金 <b>${yen(st.paidPrin)}</b> ／ 利息 <b>${yen(st.paidInt)}</b><br>`+(p&&!p.done&&!p.never?`このまま返すと約${Math.floor(p.n/12)?Math.floor(p.n/12)+'年':''}${p.n%12?p.n%12+'か月':''}後に完済、今後の利息は約 <b>${yen(p.ti)}</b>`:p&&p.never?'返済額が利息以下のため完済できません':'')+`<br>月々の返済額と返済日を入れると、毎月自動で返済が記録されます。`})}
       return f},
     save:v=>{if(!v.name.trim())return'名前を入力してください';if(!v.acc)return'先に口座を追加してください';
-      const o={name:v.name.trim(),rate:num(v.rate),monthly:num(v.monthly),payDay:num(v.payDay)||27,acc:v.acc};
+      const o={icon:v.icon,name:v.name.trim(),rate:num(v.rate),monthly:num(v.monthly),payDay:num(v.payDay)||27,acc:v.acc};
       if(ex){Object.assign(ex,o);if(Math.round(num(v.bal))!==Math.round(st.bal)){ex.bal0=num(v.bal);ex.asOf=today();ex.last=ymOf(today())}}
       else S.loans.push({id:uid('l'),bal0:num(v.bal),asOf:today(),last:ymOf(today()),...o});
       gen()},
@@ -886,6 +939,7 @@ document.addEventListener('click',e=>{
     if(el.dataset.vb){if(el.dataset.vb==='mic')startMic();else applyVoice((F&&F.voiceText)||'');return}
     if(el.dataset.tag){const ts=parseTags(F.vals.tags),k=ts.indexOf(el.dataset.tag);if(k>=0)ts.splice(k,1);else ts.push(el.dataset.tag);F.vals.tags=tagStr(ts);renderSheet();return}
     if(el.dataset.close){closeForm();return}
+    if(el.dataset.emok){const k=el.dataset.emok;pickEmoji(F.vals[k],x=>{F.vals[k]=x;renderSheet()});return}
     if(el.dataset.seg){F.vals[el.dataset.seg]=el.dataset.v;renderSheet();if(el.dataset.seg==='method'&&el.dataset.v==='voice')focusVoice();return}
     if(el.dataset.save){const r=F.save(F.vals);if(r){$('#err').textContent=r;return}if(typeof gen==='function')gen();save();closeForm();render();return}
     if(el.dataset.del){
@@ -893,6 +947,8 @@ document.addEventListener('click',e=>{
       const r=F.del();if(r){$('#err').textContent=r;el.dataset.ok='';el.textContent='削除';return}save();closeForm();render();return}
     return;
   }
+  const ce=e.target.closest('[data-cemo]');
+  if(ce){const c=S.cats.find(x=>x.id===ce.dataset.cemo);if(c)pickEmoji(c.icon,x=>{c.icon=x;save();render()});return}
   const el=e.target.closest('[data-a]');if(!el)return;
   const[a,arg]=el.dataset.a.split(':');
   if(a==='tab'){tab=arg;render();window.scrollTo(0,0)}
@@ -910,6 +966,9 @@ document.addEventListener('click',e=>{
   else if(a==='budget')openBudget();
   else if(a==='catadd'){S.cats.push({id:uid('e'),name:'新しいカテゴリ',icon:'🏷️'});save();render()}
   else if(a==='tf'){tf=arg||'';render()}
+  else if(a==='cf'){cf=arg||'';render()}
+  else if(a==='srt'){srt=arg;render()}
+  else if(a==='allp'){allp=arg==='1';render()}
   else if(a==='tagdel'){
     if(!el.dataset.ok){el.dataset.ok=1;el.textContent='本当に？';return}
     const fix=x=>{if(x.tags)x.tags=x.tags.filter(t=>t!==arg)};S.txns.forEach(fix);S.recs.forEach(fix);if(tf===arg)tf='';save();render()}
