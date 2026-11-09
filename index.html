@@ -196,6 +196,13 @@ function stmtOf(c,d){
   const cm=(close===0||day<=close)?ym:addM(ym,1);
   return{key:cm,pay:dayStr(addM(cm,c.offset==null?1:num(c.offset)),num(c.payDay)||27)};
 }
+function cardCycle(c){
+  const t=today(),cur=stmtOf(c,t),close=num(c.closing);
+  const closeDate=dayStr(cur.key,close===0?31:close);
+  const i=cardInfo(c),open=i.st.find(x=>x.key===cur.key);
+  const days=Math.round((new Date(closeDate)-new Date(t))/86400000);
+  return{closeDate,days,use:open?open.total:0,n:open?open.n:0,pay:cur.pay};
+}
 function cardInfo(c){
   const m={},t=today();
   S.txns.forEach(x=>{if(x.type==='expense'&&x.card===c.id&&x.date<=t){const s=stmtOf(c,x.date);const e=m[s.key]||(m[s.key]={key:s.key,pay:s.pay,total:0,n:0});e.total+=x.amount;e.n++}});
@@ -464,7 +471,7 @@ function assetsV(){
   let h=head('資産',yen(T.net));
   h+=`<div class="sec">口座・現金<button data-a="acc:new">追加</button></div><div class="list">${S.accounts.map(a=>`<button class="li" data-a="acc:${a.id}"><span class="ic">${esc(a.icon||'🏧')}</span><div class="l"><div class="t">${esc(a.name)}</div></div><div class="r">${yen(accBal(a))}</div></button>`).join('')}</div>`;
   h+=`<div class="sec">クレジットカード<button data-a="card:new">追加</button></div>`;
-  h+=S.cards.length?`<div class="list">${S.cards.map(c=>{const i=cardInfo(c);return`<button class="li" data-a="card:${c.id}"><span class="ic">${esc(c.icon||'💳')}</span><div class="l"><div class="t">${esc(c.name)}</div><div class="s">${cardRule(c)}　${i.next?'次回 '+mdLabel(i.next.pay)+' '+yen(i.next.total):'未払いなし'}</div></div><div class="r">${yen(i.unpaid)}</div></button>`}).join('')}</div>`:`<div class="note">カードを追加すると、締め日・引き落とし日に合わせて未払い額を自動計算します。</div>`;
+  h+=S.cards.length?`<div class="list">${S.cards.map(c=>{const i=cardInfo(c),cy=cardCycle(c);return`<button class="li" data-a="card:${c.id}"><span class="ic">${esc(c.icon||'💳')}</span><div class="l"><div class="t">${esc(c.name)}</div><div class="s">${cardRule(c)}</div><div class="s">次の締め日 ${mdLabel(cy.closeDate)}（${cy.days>0?'あと'+cy.days+'日':'今日'}）・今回の利用 ${yen(cy.use)}</div><div class="s">${i.next?'次回の引き落とし '+mdLabel(i.next.pay)+' '+yen(i.next.total):'引き落とし予定なし'}</div></div><div class="r">${yen(i.unpaid)}<div class="s">未払い</div></div></button>`}).join('')}</div>`:`<div class="note">カードを追加すると、締め日・引き落とし日に合わせて未払い額を自動計算します。</div>`;
   h+=`<div class="sec">ローン<button data-a="loan:new">追加</button></div>`;
   h+=S.loans.length?`<div class="list">${S.loans.map(l=>{const st=loanState(l),p=loanProj(l,st.bal);const sub=p?(p.done?'完済済み 🎉':p.never?'返済額が利息以下です':'完済見込み '+ymLabel(p.end)+'ごろ'):'月々の返済額を設定すると完済日を計算します';return`<button class="li" data-a="loan:${l.id}"><span class="ic">${esc(l.icon||'🏦')}</span><div class="l"><div class="t">${esc(l.name)}</div><div class="s">${esc(sub)}</div></div><div class="r">${yen(st.bal)}</div></button>`}).join('')}</div>`:`<div class="note">ローンを追加すると、返済のたびに元金と利息を分けて残高を減らします。</div>`;
   return h;
