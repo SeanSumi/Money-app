@@ -337,13 +337,13 @@ function ensureCats(){
 }
 const PIEC=['#2f6fed','#5fa0ff','#1fb5a8','#f5a524','#e5566d','#8b6cf0','#41c27a','#e07b39','#4cc9f0','#9aa7bd'];
 function catTotals(m){const o={};S.txns.forEach(x=>{if(x.type==='expense'&&ymOf(x.date)===m)o[x.cat]=(o[x.cat]||0)+x.amount});return o}
-function pieSvg(rows,total){
+function pieSvg(rows,total,label){
   const R=80,C=100,r=48;let a0=-Math.PI/2,g='';
   if(rows.length===1)g=`<circle cx="${C}" cy="${C}" r="${(R+r)/2}" fill="none" stroke="${rows[0].color}" stroke-width="${R-r}"/>`;
   else rows.forEach(w=>{const a1=a0+w.amt/total*2*Math.PI,lg=a1-a0>Math.PI?1:0;
     const P=(rad,a)=>(C+rad*Math.cos(a)).toFixed(2)+' '+(C+rad*Math.sin(a)).toFixed(2);
     g+=`<path d="M${P(R,a0)} A${R} ${R} 0 ${lg} 1 ${P(R,a1)} L${P(r,a1)} A${r} ${r} 0 ${lg} 0 ${P(r,a0)} Z" fill="${w.color}" stroke="#fff" stroke-width="1"/>`;a0=a1});
-  return`<svg viewBox="0 0 200 200" style="width:230px;max-width:70%;display:block;margin:6px auto" role="img" aria-label="カテゴリ別の支出の円グラフ">${g}<text x="100" y="95" text-anchor="middle" font-size="11" fill="#7b8794">支出合計</text><text x="100" y="115" text-anchor="middle" font-size="15" font-weight="700" fill="currentColor">${yen(total)}</text></svg>`;
+  return`<svg viewBox="0 0 200 200" style="width:230px;max-width:70%;display:block;margin:6px auto" role="img" aria-label="カテゴリ別の支出の円グラフ">${g}<text x="100" y="95" text-anchor="middle" font-size="11" fill="#7b8794">${label||'支出合計'}</text><text x="100" y="115" text-anchor="middle" font-size="15" font-weight="700" fill="currentColor">${yen(total)}</text></svg>`;
 }
 let calDay='';
 const shortYen=n=>n>=10000?(Math.round(n/1000)/10)+'万':String(n);
@@ -372,6 +372,22 @@ function calV(){
   if(!bills.length&&!dayTx.length)h+=`<div class="empty"><p>この日の記録・予定はありません</p></div>`;
   return h;
 }
+let apie='asset';
+function achartV(){
+  const T=totals();
+  const assets=S.accounts.map(a=>({name:a.name,icon:a.icon||'🏧',amt:accBal(a)})).filter(x=>x.amt>0);
+  const debts=[...S.cards.map(c=>({name:c.name,icon:c.icon||'💳',amt:cardInfo(c).unpaid})),...S.loans.map(l=>({name:l.name,icon:l.icon||'🏦',amt:loanState(l).bal}))].filter(x=>x.amt>0);
+  let rows=(apie==='asset'?assets:debts).sort((a,b)=>b.amt-a.amt);
+  if(rows.length>10){const rest=rows.slice(9);rows=rows.slice(0,9);rows.push({name:'その他（'+rest.length+'件）',icon:'📦',amt:rest.reduce((a,x)=>a+x.amt,0)})}
+  rows.forEach((w,i)=>w.color=PIEC[i%PIEC.length]);
+  const total=rows.reduce((a,x)=>a+x.amt,0);
+  let h=head('資産の円グラフ')+`<button class="btn" data-a="tab:assets" style="margin-bottom:10px">‹ 資産に戻る</button>
+  <div class="seg"><button data-a="apie:asset" class="${apie==='asset'?'on':''}">資産の内訳</button><button data-a="apie:debt" class="${apie==='debt'?'on':''}">借入・未払いの内訳</button></div>
+  <div class="list"><div class="li"><span class="mute">資産</span><b>${yen(T.assets)}</b></div><div class="li"><span class="mute">カード未払い ＋ ローン</span><b>${yen(T.cards+T.loans)}</b></div><div class="li"><span class="mute">純資産</span><b class="${T.net<0?'neg':'pos'}">${yen(T.net)}</b></div></div>`;
+  if(!total)return h+`<div class="empty"><p>${apie==='asset'?'プラスの残高の口座がありません':'借入・未払いはありません'}</p></div>`;
+  h+=`<div class="list" style="padding:6px 0;margin-top:12px">${pieSvg(rows,total,apie==='asset'?'資産合計':'負債合計')}</div><div class="sec">${apie==='asset'?'口座・現金':'カード・ローン'}別</div><div class="list">${rows.map(w=>`<div class="li"><span class="ic"><i style="display:inline-block;width:10px;height:10px;border-radius:5px;background:${w.color}"></i></span><div class="l"><div class="t">${esc(w.icon)} ${esc(w.name)}</div><div class="s">${Math.round(w.amt/total*100)}%</div></div><div class="r">${yen(w.amt)}</div></div>`).join('')}</div>`;
+  return h;
+}
 function chartV(){
   const cur=catTotals(mon),prv=catTotals(addM(mon,-1));
   let rows=Object.keys(cur).map(id=>({id,name:catName(id),icon:catIcon(id),amt:cur[id],prev:prv[id]||0})).sort((a,b)=>b.amt-a.amt);
@@ -390,7 +406,7 @@ function render(){
   ensureCats();
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===tab));
   $('#fab').style.display='';
-  $('#view').innerHTML=deco(({home:homeV,txns:txnsV,pay:payV,budget:budgetV,assets:assetsV,settings:settingsV,chart:chartV,cal:calV})[tab]());
+  $('#view').innerHTML=deco(({home:homeV,txns:txnsV,pay:payV,budget:budgetV,assets:assetsV,settings:settingsV,chart:chartV,cal:calV,achart:achartV})[tab]());
 }
 const head=(t,sub)=>`<div class="title"><h1>${t}</h1><div class="rt"><small>${sub||''}</small>${tab==='settings'?'':'<button class="gear" data-a="tab:settings" aria-label="設定">⚙︎</button>'}</div></div>`;
 
@@ -504,7 +520,7 @@ function quickBox(){
 function assetsV(){
   if(!S.accounts.length)return head('資産')+quickBox()+'<div class="note">口座の行（例：三井住友銀行 50万円）を書くと、口座が作られます。カードやローンは、口座と一緒に書いてください。</div>';
   const T=totals();
-  let h=head('資産',yen(T.net))+quickBox();
+  let h=head('資産',yen(T.net))+`<button class="btn" data-a="tab:achart" style="margin-bottom:10px;width:100%">🥧 資産の円グラフを見る</button>`+quickBox();
   h+=`<div class="sec">口座・現金<button data-a="acc:new">追加</button></div><div class="list">${S.accounts.map(a=>`<button class="li" data-a="acc:${a.id}"><span class="ic">${esc(a.icon||'🏧')}</span><div class="l"><div class="t">${esc(a.name)}</div></div><div class="r">${yen(accBal(a))}</div></button>`).join('')}</div>`;
   h+=`<div class="sec">クレジットカード<button data-a="card:new">追加</button></div>`;
   h+=S.cards.length?`<div class="list">${S.cards.map(c=>{const i=cardInfo(c),cy=cardCycle(c);return`<button class="li" data-a="card:${c.id}"><span class="ic">${esc(c.icon||'💳')}</span><div class="l"><div class="t">${esc(c.name)}</div><div class="s">${cardRule(c)}</div><div class="s">次の締め日 ${mdLabel(cy.closeDate)}（${cy.days>0?'あと'+cy.days+'日':'今日'}）・今回の利用 ${yen(cy.use)}</div><div class="s">${i.next?'次回の引き落とし '+mdLabel(i.next.pay)+' '+yen(i.next.total):'引き落とし予定なし'}</div></div><div class="r">${yen(i.unpaid)}<div class="s">未払い</div></div></button>`}).join('')}</div>`:`<div class="note">カードを追加すると、締め日・引き落とし日に合わせて未払い額を自動計算します。</div>`;
@@ -1133,6 +1149,7 @@ document.addEventListener('click',e=>{
     if(err){abkMsg='!'+err;render();return}
     const its=parseAssetText(abkText),n=its.filter(x=>x.kind!=='bad').length,bad=its.length-n;
     abkText='';abkMsg=n+'件を登録しました'+(bad?'（読み取れない'+bad+'行は登録していません）':'');tab='assets';save();render();window.scrollTo(0,0)}
+  else if(a==='apie'){apie=arg;render()}
   else if(a==='cf'){cf=arg||'';render()}
   else if(a==='fav'){const f=favs(6)[Number(arg)];if(f)openTxn(null,'manual',favTpl(f))}
   else if(a==='srt'){srt=arg;render()}
