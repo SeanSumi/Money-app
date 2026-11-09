@@ -271,6 +271,14 @@ const KICON={income:'💰',card:'💳',loan:'🏦',fixed:'📌',other:'👛'};
 const TI={'カレンダー':'📅','円グラフ':'🥧','ホーム':'🏡','取引':'🧾','収支':'💸','予算':'🎯','資産':'💎','設定':'⚙️','マネー管理':'👛'};
 const cardRule=c=>(num(c.closing)?num(c.closing)+'日締め':'月末締め')+'・'+['当月','翌月','翌々月'][c.offset==null?1:num(c.offset)]+(num(c.payDay)||27)+'日払い';
 const cardPayName=c=>c.name.includes('カード')?c.name:c.name+'カード';
+const NAMEALIAS=[[/アメックス|アメリカンエキスプレス|americanexpress/g,'amex'],[/ペイペイ/g,'paypay'],[/アマゾン/g,'amazon'],[/エポス/g,'epos'],[/エーエヌエー/g,'ana'],[/三井住友カード|エスエムビーシー/g,'smbc'],[/楽天/g,'rakuten'],[/ゆうちょ|郵便貯金/g,'yucho']];
+function nameCore(n){let t=String(n||'').normalize('NFKC').toLowerCase().replace(/\s+/g,'');NAMEALIAS.forEach(a=>{t=t.replace(a[0],a[1])});return t.replace(/クレジットカード|クレジット|クレカ|カード|card|銀行|bank/g,'')}
+function fuzzyFind(list,name){
+  const n=nameCore(name);if(!n)return null;
+  let ex=list.find(x=>nameCore(x.name)===n);if(ex)return ex;
+  if(n.length>=3)ex=list.find(x=>{const c=nameCore(x.name);return c.length>=3&&(c.includes(n)||n.includes(c))});
+  return ex||null;
+}
 const isFixedName=n=>/維持費/.test(String(n||''));
 const isLoanName=n=>/ローン|借入|借り入れ|奨学金/.test(String(n||''));
 const isCardName=n=>/カード|クレジット|クレカ/.test(String(n||''));
@@ -376,16 +384,16 @@ let apie='asset';
 function achartV(){
   const T=totals();
   const assets=S.accounts.map(a=>({name:a.name,icon:a.icon||'🏧',amt:accBal(a)})).filter(x=>x.amt>0);
-  const debts=[...S.cards.map(c=>({name:c.name,icon:c.icon||'💳',amt:cardInfo(c).unpaid})),...S.loans.map(l=>({name:l.name,icon:l.icon||'🏦',amt:loanState(l).bal}))].filter(x=>x.amt>0);
+  const debts=S.loans.map(l=>({name:l.name,icon:l.icon||'🏦',amt:loanState(l).bal,sub:(num(l.monthly)>0?'月々 '+yen(num(l.monthly)):'')+(num(l.rate)?' ・年利'+l.rate+'%':'')})).filter(x=>x.amt>0);
   let rows=(apie==='asset'?assets:debts).sort((a,b)=>b.amt-a.amt);
   if(rows.length>10){const rest=rows.slice(9);rows=rows.slice(0,9);rows.push({name:'その他（'+rest.length+'件）',icon:'📦',amt:rest.reduce((a,x)=>a+x.amt,0)})}
   rows.forEach((w,i)=>w.color=PIEC[i%PIEC.length]);
   const total=rows.reduce((a,x)=>a+x.amt,0);
   let h=head('資産の円グラフ')+`<button class="btn" data-a="tab:assets" style="margin-bottom:10px">‹ 資産に戻る</button>
-  <div class="seg"><button data-a="apie:asset" class="${apie==='asset'?'on':''}">資産の内訳</button><button data-a="apie:debt" class="${apie==='debt'?'on':''}">借入・未払いの内訳</button></div>
-  <div class="list"><div class="li"><span class="mute">資産</span><b>${yen(T.assets)}</b></div><div class="li"><span class="mute">カード未払い ＋ ローン</span><b>${yen(T.cards+T.loans)}</b></div><div class="li"><span class="mute">純資産</span><b class="${T.net<0?'neg':'pos'}">${yen(T.net)}</b></div></div>`;
-  if(!total)return h+`<div class="empty"><p>${apie==='asset'?'プラスの残高の口座がありません':'借入・未払いはありません'}</p></div>`;
-  h+=`<div class="list" style="padding:6px 0;margin-top:12px">${pieSvg(rows,total,apie==='asset'?'資産合計':'負債合計')}</div><div class="sec">${apie==='asset'?'口座・現金':'カード・ローン'}別</div><div class="list">${rows.map(w=>`<div class="li"><span class="ic"><i style="display:inline-block;width:10px;height:10px;border-radius:5px;background:${w.color}"></i></span><div class="l"><div class="t">${esc(w.icon)} ${esc(w.name)}</div><div class="s">${Math.round(w.amt/total*100)}%</div></div><div class="r">${yen(w.amt)}</div></div>`).join('')}</div>`;
+  <div class="seg"><button data-a="apie:asset" class="${apie==='asset'?'on':''}">資産の内訳</button><button data-a="apie:debt" class="${apie==='debt'?'on':''}">ローンの内訳</button></div>
+  <div class="list"><div class="li"><span class="mute">資産</span><b>${yen(T.assets)}</b></div><div class="li"><span class="mute">ローン残高</span><b>${yen(T.loans)}</b></div><div class="li"><span class="mute">純資産（カード未払い込み）</span><b class="${T.net<0?'neg':'pos'}">${yen(T.net)}</b></div></div>`;
+  if(!total)return h+`<div class="empty"><p>${apie==='asset'?'プラスの残高の口座がありません':'ローンはありません'}</p></div>`;
+  h+=`<div class="list" style="padding:6px 0;margin-top:12px">${pieSvg(rows,total,apie==='asset'?'資産合計':'ローン残高')}</div><div class="sec">${apie==='asset'?'口座・現金':'ローン'}別</div><div class="list">${rows.map(w=>`<div class="li"><span class="ic"><i style="display:inline-block;width:10px;height:10px;border-radius:5px;background:${w.color}"></i></span><div class="l"><div class="t">${esc(w.icon)} ${esc(w.name)}</div><div class="s">${Math.round(w.amt/total*100)}%${w.sub?' ・ '+esc(w.sub):''}</div></div><div class="r">${yen(w.amt)}</div></div>`).join('')}</div>`;
   return h;
 }
 function chartV(){
@@ -772,23 +780,23 @@ function applyAssetText(text,accId){
       const needsAcc=items.some(x=>x.kind==='card'||x.kind==='loan'||x.kind==='fixed');
       if(needsAcc&&!accId&&!S.accounts.length&&!items.some(x=>x.kind==='account'))return'カードやローンには、引き落とし口座が必要です。口座の行も一緒に書いてください';
       items.filter(x=>x.kind==='account').forEach(x=>{
-        const ex=S.accounts.find(a=>norm(a.name)===norm(x.name));
+        const ex=fuzzyFind(S.accounts,x.name);
         if(ex)ex.opening=x.balance-accBal(ex,true);else S.accounts.push({id:uid('a'),name:x.name,opening:x.balance});
       });
       const acc=accId||(S.accounts[0]&&S.accounts[0].id);
       items.filter(x=>x.kind==='card').forEach(c=>{
-        const ex=S.cards.find(x=>norm(x.name)===norm(c.name));
+        const ex=fuzzyFind(S.cards,c.name);
         if(ex)Object.assign(ex,{closing:c.closing,payDay:c.payDay,offset:c.offset});
         else S.cards.push({id:uid('c'),name:c.name,closing:c.closing,payDay:c.payDay,offset:c.offset,acc});
       });
       items.filter(x=>x.kind==='loan').forEach(x=>{
-        const ex=S.loans.find(l=>norm(l.name)===norm(x.name));
-        const o={name:x.name,rate:x.rate==null?(ex?ex.rate:0):x.rate,monthly:x.monthly==null?(ex?ex.monthly:0):x.monthly,payDay:x.payDay||(ex&&ex.payDay)||27,acc};
+        const ex=fuzzyFind(S.loans,x.name);
+        const o={name:ex?ex.name:x.name,rate:x.rate==null?(ex?ex.rate:0):x.rate,monthly:x.monthly==null?(ex?ex.monthly:0):x.monthly,payDay:x.payDay||(ex&&ex.payDay)||27,acc};
         if(ex){Object.assign(ex,o);if(Math.round(x.balance)!==Math.round(loanState(ex).bal)){ex.bal0=x.balance;ex.asOf=today();ex.last=ymOf(today())}}
         else S.loans.push({id:uid('l'),bal0:x.balance,asOf:today(),last:ymOf(today()),...o});
       });
       items.filter(x=>x.kind==='fixed').forEach(x=>{
-        const ex=S.recs.find(r=>norm(r.name)===norm(x.name));
+        const ex=fuzzyFind(S.recs,x.name);
         const cat=x.income?null:voiceCat(x.name);
         const o={type:x.income?'income':'expense',name:x.name,amount:x.amount,day:x.day,tags:['固定費'],cat,acc,card:null};
         if(ex)Object.assign(ex,o);else S.recs.push({id:uid('r'),startYm:ymOf(today()),...o});
@@ -951,6 +959,8 @@ function payMatch(text){
   for(const o of opts){const nm=o[1].replace('（カード）','');if(nm&&t.includes(nm))return[o[0],nm]}
   const toks=t.split(/[\s、。,　]+/).filter(w=>w.length>=3&&!/^[\d\/\-:.,円]+$/.test(w));
   for(const w of toks)for(const o of opts){const nm=o[1].replace('（カード）','');if(nm.includes(w))return[o[0],w]}
+  const tc=nameCore(t);
+  for(const o of opts){const c=nameCore(o[1].replace('（カード）',''));if(c.length>=3&&tc.includes(c))return[o[0],c]}
   return[null,''];
 }
 function voicePay(text){
