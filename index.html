@@ -465,10 +465,20 @@ function budgetV(){
   h+=S.recs.length?`<div class="list">${S.recs.map(r=>`<button class="li" data-a="rec:${r.id}"><span class="ic">${r.type==='income'?'💰':catIcon(r.cat)}</span><div class="l"><div class="t">${esc(r.name)}</div><div class="s">毎月${r.day}日 ・ ${r.type==='income'?'収入':catName(r.cat)}</div></div><div class="r ${r.type==='income'?'pos':''}">${r.type==='income'?'+':'-'}${yen(r.amount).replace('-','')}</div></button>`).join('')}</div>`:`<div class="empty"><p>給料・家賃・サブスクなどを登録すると、毎月その日に自動で取引が追加されます</p></div>`;
   return h;
 }
+let abkText='',abkMsg='';
+function quickBox(){
+  const it=parseAssetText(abkText);
+  return`<div class="sec">📝 雑に入力して登録</div><div class="list" style="padding:10px 12px">
+  <textarea class="area" data-abk="1" rows="4" placeholder="1行に1件、自由に書けます&#10;三井住友銀行 50万円&#10;自動車ローン 180万円 年利3.5% 月4万円&#10;楽天カード 末締め27日払い&#10;固定費 維持費 35000円 毎月27日">${esc(abkText)}</textarea>
+  <div class="info" id="abkprev" style="margin:8px 0">${it.length?it.map(describeAsset).join('<br>'):'書くと、ここに読み取り結果が出ます（銀行・ローン・カード・固定費）'}</div>
+  <button class="btn" data-a="abk" style="width:100%">登録する</button>
+  <div class="scanmsg ${abkMsg&&abkMsg[0]==='!'?'bad':''}" id="abkmsg">${esc((abkMsg||'').replace(/^!/,''))}</div>
+  <div style="font-size:11px;color:var(--mute);margin-top:4px">同じ名前は上書きします。カード・ローン・固定費の引き落とし口座は、いちばん上の口座になります（あとで各画面で変えられます）。</div></div>`;
+}
 function assetsV(){
-  if(!S.accounts.length)return onboarding();
+  if(!S.accounts.length)return head('資産')+quickBox()+'<div class="note">口座の行（例：三井住友銀行 50万円）を書くと、口座が作られます。カードやローンは、口座と一緒に書いてください。</div>';
   const T=totals();
-  let h=head('資産',yen(T.net));
+  let h=head('資産',yen(T.net))+quickBox();
   h+=`<div class="sec">口座・現金<button data-a="acc:new">追加</button></div><div class="list">${S.accounts.map(a=>`<button class="li" data-a="acc:${a.id}"><span class="ic">${esc(a.icon||'🏧')}</span><div class="l"><div class="t">${esc(a.name)}</div></div><div class="r">${yen(accBal(a))}</div></button>`).join('')}</div>`;
   h+=`<div class="sec">クレジットカード<button data-a="card:new">追加</button></div>`;
   h+=S.cards.length?`<div class="list">${S.cards.map(c=>{const i=cardInfo(c),cy=cardCycle(c);return`<button class="li" data-a="card:${c.id}"><span class="ic">${esc(c.icon||'💳')}</span><div class="l"><div class="t">${esc(c.name)}</div><div class="s">${cardRule(c)}</div><div class="s">次の締め日 ${mdLabel(cy.closeDate)}（${cy.days>0?'あと'+cy.days+'日':'今日'}）・今回の利用 ${yen(cy.use)}</div><div class="s">${i.next?'次回の引き落とし '+mdLabel(i.next.pay)+' '+yen(i.next.total):'引き落とし予定なし'}</div></div><div class="r">${yen(i.unpaid)}<div class="s">未払い</div></div></button>`}).join('')}</div>`:`<div class="note">カードを追加すると、締め日・引き落とし日に合わせて未払い額を自動計算します。</div>`;
@@ -715,26 +725,18 @@ function describeAsset(x){
   if(x.kind==='loan')return`🏦 ローン「${esc(x.name)}」残高 ${yen(x.balance)}${x.rate!=null?'・年利'+x.rate+'%':''}${x.monthly?'・月'+yen(x.monthly):''}${x.payDay?'・'+x.payDay+'日払い':''}`;
   return`❓ 読み取れません：${esc(x.text)}`;
 }
-function openAssetBulk(){
+const parseAssetText=txt=>String(txt||'').split(/\n/).map(parseAssetLine).filter(Boolean);
+function applyAssetText(text,accId){
   const norm=x=>String(x).replace(/\s+/g,'').toLowerCase();
-  const parse=txt=>String(txt||'').split(/\n/).map(parseAssetLine).filter(Boolean);
-  const preview=v=>{const it=parse(v.text);return it.length?it.map(describeAsset).join('<br>'):'入力すると、ここに読み取り結果が出ます。'};
-  openForm({title:'まとめて登録',vals:{text:'',acc:S.accounts[0]&&S.accounts[0].id},
-    onInput:v=>{const e=$('#bulkprev');if(e)e.innerHTML=preview(v)},
-    fields:v=>[{type:'info',html:'1行に1件、自由な文章で書けます。銀行・ローン・クレジットカードを、種類を見分けて登録します。<br>例：<br><b>三井住友銀行 残高50万円</b><br><b>自動車ローン 残高180万円 年利3.5% 月4万円 27日払い</b><br><b>AMEXカード 7日締め26日払い</b><br><b>固定費 維持費 35000円 毎月27日</b>（毎月自動で記録されます）<br>同じ名前があれば、内容を上書きします。'},
-      {type:'area',k:'text',ph:'ここに入力・貼り付け'},
-      {type:'preview',html:preview(v)},
-      {k:'acc',label:'カード・ローンの引き落とし口座',type:'select',options:accOpts()}],
-    save:v=>{
-      const items=parse(v.text).filter(x=>x.kind!=='bad');
+      const items=parseAssetText(text).filter(x=>x.kind!=='bad');
       if(!items.length)return'読み取れる行がありません。例のように書いてみてください';
       const needsAcc=items.some(x=>x.kind==='card'||x.kind==='loan'||x.kind==='fixed');
-      if(needsAcc&&!v.acc&&!S.accounts.length&&!items.some(x=>x.kind==='account'))return'カードやローンには、引き落とし口座が必要です。口座の行も一緒に書いてください';
+      if(needsAcc&&!accId&&!S.accounts.length&&!items.some(x=>x.kind==='account'))return'カードやローンには、引き落とし口座が必要です。口座の行も一緒に書いてください';
       items.filter(x=>x.kind==='account').forEach(x=>{
         const ex=S.accounts.find(a=>norm(a.name)===norm(x.name));
         if(ex)ex.opening=x.balance-accBal(ex,true);else S.accounts.push({id:uid('a'),name:x.name,opening:x.balance});
       });
-      const acc=v.acc||(S.accounts[0]&&S.accounts[0].id);
+      const acc=accId||(S.accounts[0]&&S.accounts[0].id);
       items.filter(x=>x.kind==='card').forEach(c=>{
         const ex=S.cards.find(x=>norm(x.name)===norm(c.name));
         if(ex)Object.assign(ex,{closing:c.closing,payDay:c.payDay,offset:c.offset});
@@ -752,7 +754,20 @@ function openAssetBulk(){
         const o={type:x.income?'income':'expense',name:x.name,amount:x.amount,day:x.day,tags:['固定費'],cat,acc,card:null};
         if(ex)Object.assign(ex,o);else S.recs.push({id:uid('r'),startYm:ymOf(today()),...o});
       });
-      gen();tab=items.every(x=>x.kind==='fixed')?'pay':'assets'}});
+      gen();tab=items.every(x=>x.kind==='fixed')?'pay':'assets'
+}
+function openAssetBulk(){
+  const norm=x=>String(x).replace(/\s+/g,'').toLowerCase();
+  const parse=txt=>String(txt||'').split(/\n/).map(parseAssetLine).filter(Boolean);
+  const preview=v=>{const it=parse(v.text);return it.length?it.map(describeAsset).join('<br>'):'入力すると、ここに読み取り結果が出ます。'};
+  openForm({title:'まとめて登録',vals:{text:'',acc:S.accounts[0]&&S.accounts[0].id},
+    onInput:v=>{const e=$('#bulkprev');if(e)e.innerHTML=preview(v)},
+    fields:v=>[{type:'info',html:'1行に1件、自由な文章で書けます。銀行・ローン・クレジットカードを、種類を見分けて登録します。<br>例：<br><b>三井住友銀行 残高50万円</b><br><b>自動車ローン 残高180万円 年利3.5% 月4万円 27日払い</b><br><b>AMEXカード 7日締め26日払い</b><br><b>固定費 維持費 35000円 毎月27日</b>（毎月自動で記録されます）<br>同じ名前があれば、内容を上書きします。'},
+      {type:'area',k:'text',ph:'ここに入力・貼り付け'},
+      {type:'preview',html:preview(v)},
+      {k:'acc',label:'カード・ローンの引き落とし口座',type:'select',options:accOpts()}],
+    save:v=>{
+      return applyAssetText(v.text,v.acc)}});
 }
 function openCardBulk(){
   const norm=x=>String(x).replace(/\s+/g,'').toLowerCase();
@@ -1090,6 +1105,11 @@ document.addEventListener('click',e=>{
   else if(a==='catadd'){S.cats.push({id:uid('e'),name:'新しいカテゴリ',icon:'🏷️'});save();render()}
   else if(a==='tf'){tf=arg||'';render()}
   else if(a==='cal'){calDay=arg.length>8?arg:calDay;render()}
+  else if(a==='abk'){
+    const err=applyAssetText(abkText,S.accounts[0]&&S.accounts[0].id);
+    if(err){abkMsg='!'+err;render();return}
+    const its=parseAssetText(abkText),n=its.filter(x=>x.kind!=='bad').length,bad=its.length-n;
+    abkText='';abkMsg=n+'件を登録しました'+(bad?'（読み取れない'+bad+'行は登録していません）':'');tab='assets';save();render();window.scrollTo(0,0)}
   else if(a==='cf'){cf=arg||'';render()}
   else if(a==='fav'){const f=favs(6)[Number(arg)];if(f)openTxn(null,'manual',favTpl(f))}
   else if(a==='srt'){srt=arg;render()}
@@ -1111,6 +1131,7 @@ document.addEventListener('click',e=>{
 });
 document.addEventListener('input',e=>{
   const el=e.target;
+  if(el.dataset.abk!=null){abkText=el.value;const pe=$('#abkprev');if(pe){const it=parseAssetText(abkText);pe.innerHTML=it.length?it.map(describeAsset).join('<br>'):'書くと、ここに読み取り結果が出ます（銀行・ローン・カード・固定費）'}return}
   if(F&&el.dataset.k){F.vals[el.dataset.k]=el.type==='checkbox'?el.checked:el.value;if(F.onInput)F.onInput(F.vals)}
   else if(F&&el.dataset.voice!=null){F.voiceText=el.value}
   else if(el.dataset.apikey!=null){try{localStorage.setItem(KEYLS,el.value.trim())}catch(err){}}
