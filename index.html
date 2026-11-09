@@ -271,6 +271,7 @@ const KICON={income:'💰',card:'💳',loan:'🏦',fixed:'📌',other:'👛'};
 const TI={'カレンダー':'📅','円グラフ':'🥧','ホーム':'🏡','取引':'🧾','収支':'💸','予算':'🎯','資産':'💎','設定':'⚙️','マネー管理':'👛'};
 const cardRule=c=>(num(c.closing)?num(c.closing)+'日締め':'月末締め')+'・'+['当月','翌月','翌々月'][c.offset==null?1:num(c.offset)]+(num(c.payDay)||27)+'日払い';
 const cardPayName=c=>c.name.includes('カード')?c.name:c.name+'カード';
+const isFixedName=n=>/維持費/.test(String(n||''));
 const isLoanName=n=>/ローン|借入|借り入れ|奨学金/.test(String(n||''));
 const isCardName=n=>/カード|クレジット|クレカ/.test(String(n||''));
 const catName=id=>(S.cats.find(c=>c.id===id)||{name:'未分類'}).name;
@@ -519,7 +520,7 @@ function paymentsOf(m){
     if(ymOf(x.date)!==m)return;
     if(x.type==='income')out.push({date:x.date,name:x.memo||'収入',sub:payName(x)+' に入金',kind:'income',amount:x.amount,done:x.date<=t,act:'txn:'+x.id});
     else if(x.type==='loanpay')out.push({date:x.date,name:(S.loans.find(l=>l.id===x.loan)||{name:'ローン'}).name,sub:'',kind:'loan',amount:x.amount,done:x.date<=t,act:'txn:'+x.id});
-    else if(x.type==='expense'&&!x.card)out.push({date:x.date,name:x.memo||catName(x.cat),sub:catName(x.cat)+' ・ '+payName(x),kind:(()=>{const an=(S.accounts.find(a=>a.id===x.acc)||{}).name;if(isLoanName(an)||isLoanName(x.memo))return'loan';if(isCardName(an)||isCardName(x.memo))return'card';return x.src?'fixed':'other'})(),amount:x.amount,done:x.date<=t,act:'txn:'+x.id});
+    else if(x.type==='expense'&&!x.card)out.push({date:x.date,name:x.memo||catName(x.cat),sub:catName(x.cat)+' ・ '+payName(x),kind:(()=>{const an=(S.accounts.find(a=>a.id===x.acc)||{}).name;if(isFixedName(x.memo)||isFixedName(catName(x.cat)))return'fixed';if(isLoanName(an)||isLoanName(x.memo))return'loan';if(isCardName(an)||isCardName(x.memo))return'card';return x.src?'fixed':'other'})(),amount:x.amount,done:x.date<=t,act:'txn:'+x.id});
   });
   if(m>=cur){
     S.loans.forEach(l=>{
@@ -530,7 +531,7 @@ function paymentsOf(m){
     S.recs.forEach(r=>{
       if(r.card)return;
       if(S.txns.some(x=>x.src===r.id&&ymOf(x.date)===m))return;
-      const d=dayStr(m,num(r.day)||1);if(d>t)out.push({date:d,name:r.name,sub:(r.type==='income'?'入金予定':catName(r.cat))+' ・ 予定（毎月自動）',kind:r.type==='income'?'income':(()=>{const an=(S.accounts.find(a=>a.id===r.acc)||{}).name;return isLoanName(r.name)||isLoanName(an)?'loan':isCardName(r.name)||isCardName(an)?'card':'fixed'})(),amount:num(r.amount),done:false,act:'rec:'+r.id});
+      const d=dayStr(m,num(r.day)||1);if(d>t)out.push({date:d,name:r.name,sub:(r.type==='income'?'入金予定':catName(r.cat))+' ・ 予定（毎月自動）',kind:r.type==='income'?'income':(()=>{const an=(S.accounts.find(a=>a.id===r.acc)||{}).name;return isFixedName(r.name)||isFixedName(catName(r.cat))?'fixed':isLoanName(r.name)||isLoanName(an)?'loan':isCardName(r.name)||isCardName(an)?'card':'fixed'})(),amount:num(r.amount),done:false,act:'rec:'+r.id});
     });
   }
   return out.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
