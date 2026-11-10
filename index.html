@@ -396,7 +396,11 @@ function calV(){
   if(!calDay||ymOf(calDay)!==mon)calDay=ymOf(t)===mon?t:mon+'-01';
   const first=new Date(Number(mon.slice(0,4)),Number(mon.slice(5,7))-1,1),last=new Date(Number(mon.slice(0,4)),Number(mon.slice(5,7)),0).getDate();
   const monExp=S.txns.filter(x=>ymOf(x.date)===mon&&x.type==='expense').reduce((a,x)=>a+x.amount,0);
-  let h=head('カレンダー',ymLabel(mon))+`<div class="mnav"><button class="ib" data-a="mon:-1" aria-label="前の月">‹</button><b>${ymLabel(mon)}</b><button class="ib" data-a="mon:1" aria-label="次の月">›</button></div><div class="list"><div class="li"><span class="mute">この月の支出</span><b>${yen(monExp)}</b></div></div>`;
+  let h=head('カレンダー',ymLabel(mon))+`<div class="mnav"><button class="ib" data-a="mon:-1" aria-label="前の月">‹</button><b>${ymLabel(mon)}</b><button class="ib" data-a="mon:1" aria-label="次の月">›</button></div><div class="list"><div class="li"><span class="mute">この月の支出</span><b>${yen(monExp)}</b></div>${(()=>{
+    const sm=k=>{const a=pays.filter(p=>p.kind===k);return{n:a.length,all:a.reduce((x,p)=>x+p.amount,0),done:a.filter(p=>p.done).reduce((x,p)=>x+p.amount,0)}};
+    const c=sm('card'),l=sm('loan'),row=(lab,o)=>`<div class="li"><span>${lab}<div class="s">${o.n}件 ・ 支払い済み ${yen(o.done)} ／ これから ${yen(o.all-o.done)}</div></span><b>${yen(o.all)}</b></div>`;
+    return row('💳 カード支払いの合計',c)+row('🏦 ローンの合計',l)+`<div class="li"><span><b>合計（カード＋ローン）</b><div class="s">支払い済み ${yen(c.done+l.done)} ／ これから ${yen(c.all+l.all-c.done-l.done)}</div></span><b>${yen(c.all+l.all)}</b></div>`;
+  })()}</div>`;
   h+='<div class="cal">'+['日','月','火','水','木','金','土'].map(w=>`<div class="wd">${w}</div>`).join('');
   for(let i=0;i<first.getDay();i++)h+='<button class="out" tabindex="-1"></button>';
   for(let d=1;d<=last;d++){
