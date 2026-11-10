@@ -407,12 +407,14 @@ function calV(){
   const dayTx=S.txns.filter(x=>x.date===calDay).sort((a,b)=>b.amount-a.amount);
   const bills=pays.filter(p=>p.date===calDay&&!String(p.act).startsWith('txn:'));
   h+=`<div class="sec">${dLabel(calDay)}</div>`;
+  {const byA={};pays.filter(p=>p.date===calDay&&p.kind!=='income'&&p.acc).forEach(p=>{byA[p.acc]=(byA[p.acc]||0)+p.amount});
+  const ids=Object.keys(byA);
+  h+=`<div class="sec">銀行ごとの支払い</div><div class="list">${ids.length?ids.map(id=>{const a=S.accounts.find(x=>x.id===id)||{name:'口座'};return`<div class="li"><span>${esc(a.icon||'🏧')} ${esc(a.name)}</span><b>${yen(byA[id])}</b></div>`}).join('')+(ids.length>1?`<div class="li"><span class="mute">合計</span><b>${yen(ids.reduce((x,id)=>x+byA[id],0))}</b></div>`:''):`<div class="li"><span class="mute">この日の支払いはありません</span><b>${yen(0)}</b></div>`}</div>`;}
   {const dp=pays.filter(p=>p.date===calDay),sm=k=>dp.filter(p=>p.kind===k).reduce((x,p)=>x+p.amount,0),c=sm('card'),l=sm('loan');
   h+=`<div class="list"><div class="li"><span>💳 カード支払いの合計</span><b>${yen(c)}</b></div><div class="li"><span>🏦 ローンの合計</span><b>${yen(l)}</b></div><div class="li"><span><b>合計（カード＋ローン）</b></span><b>${yen(c+l)}</b></div></div>`;}
   if(bills.length)h+=`<div class="list">${bills.map(p=>`<button class="li" data-a="${p.act}"><span class="ic">${KICON[p.kind]}</span><div class="l"><div class="t">${esc(p.name)}</div><div class="s">${KINDS[p.kind]}${p.sub?' ・ '+esc(p.sub):''} ・ ${p.done?'済':'予定'}</div></div><div class="r ${p.kind==='income'?'pos':''}">${p.kind==='income'?'+':''}${yen(p.amount)}</div></button>`).join('')}</div>`;
   if(dayTx.length)h+=`<div class="list" style="margin-top:8px">${dayTx.map(txnRow).join('')}</div>`;
   if(!bills.length&&!dayTx.length)h+=`<div class="empty"><p>この日の記録・予定はありません</p></div>`;
-  if(calDay>=t)h+=`<div class="sec">この日の終わりの口座残高（見込み）</div><div class="list">${S.accounts.map(a=>{const b=projBal(a,calDay);return`<div class="li"><span>${esc(a.icon||'🏧')} ${esc(a.name)}</span><b class="${b<0?'neg':''}">${yen(b)}</b></div>`}).join('')}</div>`;
   return h;
 }
 function fcEvents(){
