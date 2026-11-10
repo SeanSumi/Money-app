@@ -396,11 +396,7 @@ function calV(){
   if(!calDay||ymOf(calDay)!==mon)calDay=ymOf(t)===mon?t:mon+'-01';
   const first=new Date(Number(mon.slice(0,4)),Number(mon.slice(5,7))-1,1),last=new Date(Number(mon.slice(0,4)),Number(mon.slice(5,7)),0).getDate();
   const monExp=S.txns.filter(x=>ymOf(x.date)===mon&&x.type==='expense').reduce((a,x)=>a+x.amount,0);
-  let h=head('カレンダー',ymLabel(mon))+`<div class="mnav"><button class="ib" data-a="mon:-1" aria-label="前の月">‹</button><b>${ymLabel(mon)}</b><button class="ib" data-a="mon:1" aria-label="次の月">›</button></div><div class="list"><div class="li"><span class="mute">この月の支出</span><b>${yen(monExp)}</b></div>${(()=>{
-    const sm=k=>{const a=pays.filter(p=>p.kind===k);return{n:a.length,all:a.reduce((x,p)=>x+p.amount,0),done:a.filter(p=>p.done).reduce((x,p)=>x+p.amount,0)}};
-    const c=sm('card'),l=sm('loan'),row=(lab,o)=>`<div class="li"><span>${lab}<div class="s">${o.n}件 ・ 支払い済み ${yen(o.done)} ／ これから ${yen(o.all-o.done)}</div></span><b>${yen(o.all)}</b></div>`;
-    return row('💳 カード支払いの合計',c)+row('🏦 ローンの合計',l)+`<div class="li"><span><b>合計（カード＋ローン）</b><div class="s">支払い済み ${yen(c.done+l.done)} ／ これから ${yen(c.all+l.all-c.done-l.done)}</div></span><b>${yen(c.all+l.all)}</b></div>`;
-  })()}</div>`;
+  let h=head('カレンダー',ymLabel(mon))+`<div class="mnav"><button class="ib" data-a="mon:-1" aria-label="前の月">‹</button><b>${ymLabel(mon)}</b><button class="ib" data-a="mon:1" aria-label="次の月">›</button></div><div class="list"><div class="li"><span class="mute">この月の支出</span><b>${yen(monExp)}</b></div></div>`;
   h+='<div class="cal">'+['日','月','火','水','木','金','土'].map(w=>`<div class="wd">${w}</div>`).join('');
   for(let i=0;i<first.getDay();i++)h+='<button class="out" tabindex="-1"></button>';
   for(let d=1;d<=last;d++){
@@ -411,6 +407,8 @@ function calV(){
   const dayTx=S.txns.filter(x=>x.date===calDay).sort((a,b)=>b.amount-a.amount);
   const bills=pays.filter(p=>p.date===calDay&&!String(p.act).startsWith('txn:'));
   h+=`<div class="sec">${dLabel(calDay)}</div>`;
+  {const dp=pays.filter(p=>p.date===calDay),sm=k=>dp.filter(p=>p.kind===k).reduce((x,p)=>x+p.amount,0),c=sm('card'),l=sm('loan');
+  h+=`<div class="list"><div class="li"><span>💳 カード支払いの合計</span><b>${yen(c)}</b></div><div class="li"><span>🏦 ローンの合計</span><b>${yen(l)}</b></div><div class="li"><span><b>合計（カード＋ローン）</b></span><b>${yen(c+l)}</b></div></div>`;}
   if(bills.length)h+=`<div class="list">${bills.map(p=>`<button class="li" data-a="${p.act}"><span class="ic">${KICON[p.kind]}</span><div class="l"><div class="t">${esc(p.name)}</div><div class="s">${KINDS[p.kind]}${p.sub?' ・ '+esc(p.sub):''} ・ ${p.done?'済':'予定'}</div></div><div class="r ${p.kind==='income'?'pos':''}">${p.kind==='income'?'+':''}${yen(p.amount)}</div></button>`).join('')}</div>`;
   if(dayTx.length)h+=`<div class="list" style="margin-top:8px">${dayTx.map(txnRow).join('')}</div>`;
   if(!bills.length&&!dayTx.length)h+=`<div class="empty"><p>この日の記録・予定はありません</p></div>`;
