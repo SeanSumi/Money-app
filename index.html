@@ -782,6 +782,9 @@ function cleanAssetName(t,dflt){
   return n||dflt;
 }
 function parseAssetLine(line){
+  const _r=parseAssetLine0(line);if(_r&&_r.kind)_r.src=String(line);return _r;
+}
+function parseAssetLine0(line){
   let t=normSpeech(line).replace(/[　]/g,' ').trim();if(!t)return null;
   const orig=t;let m;
   if(/^固定費?[\s:：、]/.test(t)){
@@ -814,6 +817,12 @@ function describeAsset(x){
   return`❓ 読み取れません：${esc(x.text)}`;
 }
 const parseAssetText=txt=>String(txt||'').split(/\n/).map(parseAssetLine).filter(Boolean);
+function accIn(x){
+  let t=String(x.src||'');if(x.name)t=t.split(x.name).join(' ');
+  const tc=nameCore(t);if(!tc)return null;
+  const hit=S.accounts.filter(a=>{const c=nameCore(a.name);return c.length>=2&&tc.includes(c)}).sort((a,b)=>nameCore(b.name).length-nameCore(a.name).length)[0];
+  return hit?hit.id:null;
+}
 function applyAssetText(text,accId){
   const norm=x=>String(x).replace(/\s+/g,'').toLowerCase();
       const items=parseAssetText(text).filter(x=>x.kind!=='bad');
@@ -827,19 +836,20 @@ function applyAssetText(text,accId){
       const acc=accId||(S.accounts[0]&&S.accounts[0].id);
       items.filter(x=>x.kind==='card').forEach(c=>{
         const ex=fuzzyFind(S.cards,c.name);
-        if(ex)Object.assign(ex,{closing:c.closing,payDay:c.payDay,offset:c.offset});
-        else S.cards.push({id:uid('c'),name:c.name,closing:c.closing,payDay:c.payDay,offset:c.offset,acc});
+        const ca=accIn(c)||(ex?ex.acc:acc);
+        if(ex)Object.assign(ex,{closing:c.closing,payDay:c.payDay,offset:c.offset,acc:ca});
+        else S.cards.push({id:uid('c'),name:c.name,closing:c.closing,payDay:c.payDay,offset:c.offset,acc:ca});
       });
       items.filter(x=>x.kind==='loan').forEach(x=>{
         const ex=fuzzyFind(S.loans,x.name);
-        const o={name:ex?ex.name:x.name,rate:x.rate==null?(ex?ex.rate:0):x.rate,monthly:x.monthly==null?(ex?ex.monthly:0):x.monthly,payDay:x.payDay||(ex&&ex.payDay)||27,acc};
+        const o={name:ex?ex.name:x.name,rate:x.rate==null?(ex?ex.rate:0):x.rate,monthly:x.monthly==null?(ex?ex.monthly:0):x.monthly,payDay:x.payDay||(ex&&ex.payDay)||27,acc:accIn(x)||(ex?ex.acc:acc)};
         if(ex){Object.assign(ex,o);if(Math.round(x.balance)!==Math.round(loanState(ex).bal)){ex.bal0=x.balance;ex.asOf=today();ex.last=ymOf(today())}}
         else S.loans.push({id:uid('l'),bal0:x.balance,asOf:today(),last:ymOf(today()),...o});
       });
       items.filter(x=>x.kind==='fixed').forEach(x=>{
         const ex=fuzzyFind(S.recs,x.name);
         const cat=x.income?null:voiceCat(x.name);
-        const o={type:x.income?'income':'expense',name:x.name,amount:x.amount,day:x.day,tags:['固定費'],cat,acc,card:null};
+        const o={type:x.income?'income':'expense',name:x.name,amount:x.amount,day:x.day,tags:['固定費'],cat,acc:accIn(x)||(ex?ex.acc:acc),card:null};
         if(ex)Object.assign(ex,o);else S.recs.push({id:uid('r'),startYm:ymOf(today()),...o});
       });
       gen();tab=items.every(x=>x.kind==='fixed')?'pay':'assets'
