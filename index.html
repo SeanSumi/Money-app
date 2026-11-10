@@ -287,8 +287,25 @@ const catName=id=>(S.cats.find(c=>c.id===id)||{name:'未分類'}).name;
 const payName=t=>t.card?'カード（'+(S.cards.find(c=>c.id===t.card)||{name:'カード'}).name+'）':(()=>{const n=(S.accounts.find(a=>a.id===t.acc)||{name:'口座'}).name;return isLoanName(n)?'ローン（'+n+'）':isCardName(n)?'カード（'+n+'）':n})();
 
 /* ===== 固定の収入・支出 / ローン自動記録 ===== */
+let lastSync=0;
+function syncAuto(){
+  const t=today(),cur=ymOf(t);let n=0;
+  S.txns.slice().forEach(x=>{
+    if(!x.src||x.man||ymOf(x.date)<cur)return;
+    const r=S.recs.find(y=>y.id===x.src),l=S.loans.find(y=>y.id===x.src);
+    if(r&&x.type!=='loanpay'){
+      const o={type:r.type,amount:num(r.amount),cat:r.cat||null,acc:r.card?null:r.acc,card:r.card||null,memo:r.name,tags:(r.tags||[]).slice(),date:dayStr(ymOf(x.date),num(r.day)||1)};
+      if(Object.keys(o).some(k=>JSON.stringify(o[k])!==JSON.stringify(x[k]==null?(k==='card'||k==='acc'||k==='cat'?null:x[k]):x[k]))){Object.assign(x,o);n++}
+    }else if(l&&x.type==='loanpay'){
+      if(num(l.monthly)<=0){if(x.date>t){S.txns=S.txns.filter(y=>y.id!==x.id);n++}return}
+      const o={amount:num(l.monthly),acc:l.acc,date:dayStr(ymOf(x.date),num(l.payDay)||1)};
+      if(o.amount!==x.amount||o.acc!==x.acc||o.date!==x.date){Object.assign(x,o);n++}
+    }else if(!r&&!l&&x.date>t){S.txns=S.txns.filter(y=>y.id!==x.id);n++}
+  });
+  lastSync=n;return n>0;
+}
 function gen(){
-  const t=today(),cur=ymOf(t);let ch=false;
+  const t=today(),cur=ymOf(t);let ch=syncAuto();
   const run=(src,kind)=>{
     let m=src.last?addM(src.last,1):(kind==='loan'?ymOf(src.asOf):(src.startYm||cur));
     if(m<addM(cur,-36))m=addM(cur,-36);
@@ -779,7 +796,7 @@ function openTxn(id,mode,tpl){
       if(v.type==='expense'&&v.cat==='__new'){const nm=(v.newcat||'').trim();if(!nm)return'カテゴリ名を入力してください';const nc={id:uid('e'),name:nm,icon:(v.newicon||'').trim()||'🏷️'};S.cats.push(nc);v.cat=nc.id}
       const o={id:ex?ex.id:uid('t'),date:v.date,type:v.type,amount:amt,memo:v.memo.trim(),tags:v.type==='loanpay'?[]:parseTags(v.tags),cat:v.type==='expense'?v.cat:null,loan:v.type==='loanpay'?v.loan:null,
         acc:v.pay[0]==='a'?v.pay.slice(2):null,card:v.pay[0]==='c'&&v.type==='expense'?v.pay.slice(2):null};
-      if(ex)Object.assign(ex,o);else S.txns.push(o);
+      if(ex){Object.assign(ex,o);if(ex.src)ex.man=true}else S.txns.push(o);
     },
     del:ex?()=>{S.txns=S.txns.filter(x=>x.id!==ex.id)}:null});
   if(!ex&&(!mode||mode==='manual'))setTimeout(()=>{try{const a=document.querySelector('[data-k="amount"]');a&&a.focus&&a.focus()}catch(e){}},200);
@@ -1337,7 +1354,7 @@ document.addEventListener('click',e=>{
     const err=applyAssetText(abkText,S.accounts[0]&&S.accounts[0].id);
     if(err){abkMsg='!'+err;render();return}
     const its=parseAssetText(abkText),n=its.filter(x=>x.kind!=='bad').length,bad=its.length-n;
-    abkText='';abkMsg=n+'件を登録・変更しました'+(bad?'（読み取れない'+bad+'行は反映していません）':'')+(abkWarn.length?'　'+abkWarn.join('／'):'');tab='assets';save();render();window.scrollTo(0,0)}
+    abkText='';abkMsg=n+'件を登録・変更しました'+(bad?'（読み取れない'+bad+'行は反映していません）':'')+(abkWarn.length?'　'+abkWarn.join('／'):'')+(lastSync?'　（今月以降の自動記録 '+lastSync+'件も更新しました）':'');tab='assets';save();render();window.scrollTo(0,0)}
   else if(a==='apie'){apie=arg;render()}
   else if(a==='payday'){openRec(null,{type:'income',name:'給与',day:10,pay:S.accounts[0]?'a:'+S.accounts[0].id:''})}
   else if(a==='cf'){cf=arg||'';render()}
