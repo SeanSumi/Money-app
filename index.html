@@ -185,7 +185,8 @@ const yen=n=>(n<0?'-':'')+'¥'+Math.abs(Math.round(n)).toLocaleString('ja-JP');
 const num=v=>Number(v)||0;
 const uid=p=>p+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
 const pad=n=>String(n).padStart(2,'0');
-const today=()=>{const d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())};
+let TODAY_O=null;
+const today=()=>{if(TODAY_O)return TODAY_O;const d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())};
 const ymOf=d=>d.slice(0,7);
 const addM=(k,n)=>{const[y,m]=k.split('-').map(Number);const d=new Date(y,m-1+n,1);return d.getFullYear()+'-'+pad(d.getMonth()+1)};
 const dim=k=>{const[y,m]=k.split('-').map(Number);return new Date(y,m,0).getDate()};
@@ -418,6 +419,59 @@ function fcCard(full){
   if(!hasInc)h+=`<div class="note">給与などの入金予定が登録されていないため、入金は計算に入っていません。<button class="btn" data-a="payday" style="margin-top:8px">給与を登録する（毎月10日）</button></div>`;
   return h;
 }
+const monthEnd=ym=>dayStr(ym,31);
+function totalsAt(date){TODAY_O=date;try{return totals()}finally{TODAY_O=null}}
+function projectedMonthEnd(){
+  const t=today(),cur=ymOf(t),T=totals();let assets=T.assets,cards=T.cards,loans=T.loans;
+  paymentsOf(cur).forEach(p=>{
+    if(p.done||p.date<=t)return;
+    if(p.kind==='income')assets+=p.amount;
+    else if(p.kind==='card'){assets-=p.amount;cards-=p.amount}
+    else if(p.kind==='loan'){
+      assets-=p.amount;
+      const l=S.loans.find(x=>String(p.act)==='loan:'+x.id);
+      if(l){const bal=loanState(l).bal,int=Math.round(bal*num(l.rate)/100/12),pr=Math.max(0,Math.min(bal,p.amount-int));loans-=pr}
+    }else assets-=p.amount;
+  });
+  return{assets,cards:Math.max(0,cards),loans:Math.max(0,loans),net:assets-Math.max(0,cards)-Math.max(0,loans)};
+}
+function nwHistory(){
+  const t=today(),cur=ymOf(t);
+  const first=S.txns.length?S.txns.map(x=>x.date).sort()[0].slice(0,7):cur;
+  const rows=[];
+  for(let m=first;m<cur;m=addM(m,1))rows.push({ym:m,final:true,...totalsAt(monthEnd(m))});
+  rows.push({ym:cur,final:false,...projectedMonthEnd()});
+  rows.forEach((r,i)=>{r.diff=i?r.net-rows[i-1].net:null});
+  return rows;
+}
+function nwChart(rows){
+  if(rows.length<2)return'';
+  const W=320,H=130,pl=8,pr=8,pt=14,pb=22,vals=rows.map(r=>r.net),mn=Math.min(...vals),mx=Math.max(...vals),sp=(mx-mn)||1;
+  const X=i=>pl+(W-pl-pr)*i/(rows.length-1),Y=v=>pt+(H-pt-pb)*(1-(v-mn)/sp);
+  const pts=rows.map((r,i)=>[X(i),Y(r.net)]);
+  const solid=pts.slice(0,-1).map((q,i)=>(i?'L':'M')+q[0].toFixed(1)+' '+q[1].toFixed(1)).join(' ');
+  const last=pts.length-1;
+  return`<svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block" role="img" aria-label="月末の純資産の推移">
+  <path d="${solid}${pts.length>1?' L'+pts[last-1][0].toFixed(1)+' '+pts[last-1][1].toFixed(1):''}" fill="none" stroke="var(--acc)" stroke-width="2.2" stroke-linejoin="round"/>
+  <path d="M${pts[last-1][0].toFixed(1)} ${pts[last-1][1].toFixed(1)} L${pts[last][0].toFixed(1)} ${pts[last][1].toFixed(1)}" fill="none" stroke="var(--acc)" stroke-width="2.2" stroke-dasharray="4 4"/>
+  ${pts.map((q,i)=>`<circle cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="${i===last?4:3}" fill="${i===last?'var(--card)':'var(--acc)'}" stroke="var(--acc)" stroke-width="2"/>`).join('')}
+  <text x="${pl}" y="${H-6}" font-size="10" fill="var(--mute)">${Number(rows[0].ym.slice(5))}月</text><text x="${W-pr}" y="${H-6}" font-size="10" text-anchor="end" fill="var(--mute)">${Number(rows[last].ym.slice(5))}月（見込み）</text>
+  <text x="${pl}" y="10" font-size="10" fill="var(--mute)">最高 ${yen(mx)}</text></svg>`;
+}
+function nwV(){
+  if(!S.accounts.length)return onboarding();
+  const rows=nwHistory(),cur=rows[rows.length-1],prev=rows[rows.length-2];
+  const last=prev?cur.net-prev.net:null;
+  let h=head('純資産の推移')+`<button class="btn" data-a="tab:assets" style="margin-bottom:10px">‹ 資産に戻る</button>
+  <div class="hero"><div class="lab">${ymLabel(cur.ym)}末の見込み 純資産</div><div class="big ${cur.net<0?'neg':''}">${yen(cur.net)}</div>
+  <div class="cols"><div><span>口座などの資産</span><b>${yen(cur.assets)}</b></div><div><span>カード未払い</span><b>${yen(cur.cards)}</b></div><div><span>ローン残高</span><b>${yen(cur.loans)}</b></div></div></div>`;
+  if(last!==null)h+=`<div class="list"><div class="li"><span class="mute">先月末との差</span><b class="${last<0?'neg':'pos'}">${last>0?'+':last<0?'−':''}${yen(Math.abs(last))}</b></div></div>`;
+  h+=`<div class="note">月末までに入る給与・引き落とし・ローン返済などの予定を、いまの残高に反映した見込みです。これから使うお金は入っていません。</div>`;
+  if(rows.length>1)h+=`<div class="sec">月末ごとの純資産</div><div class="list" style="padding:10px 12px">${nwChart(rows)}</div>`;
+  h+=`<div class="list" style="margin-top:12px">${[...rows].reverse().map(r=>`<div class="li" style="display:block"><div style="display:flex;justify-content:space-between"><span>${ymLabel(r.ym)}末${r.final?'':'（見込み）'}</span><b class="${r.net<0?'neg':''}">${yen(r.net)}</b></div><div class="s" style="margin-top:2px">資産 ${yen(r.assets)} ／ カード ${yen(r.cards)} ／ ローン ${yen(r.loans)}${r.diff!==null?' ／ 前月比 '+(r.diff>0?'+':r.diff<0?'−':'')+yen(Math.abs(r.diff)):''}</div></div>`).join('')}</div>
+  <div class="note">過去の月末は、記録した取引から計算し直しています。記録を始める前の月は、正確ではありません。取引や残高を直すと、自動で計算し直されます。</div>`;
+  return h;
+}
 let apie='asset';
 function achartV(){
   const T=totals();
@@ -452,7 +506,7 @@ function render(){
   ensureCats();
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===tab));
   $('#fab').style.display='';
-  $('#view').innerHTML=deco(({home:homeV,txns:txnsV,pay:payV,budget:budgetV,assets:assetsV,settings:settingsV,chart:chartV,cal:calV,achart:achartV})[tab]());
+  $('#view').innerHTML=deco(({home:homeV,txns:txnsV,pay:payV,budget:budgetV,assets:assetsV,settings:settingsV,chart:chartV,cal:calV,achart:achartV,nw:nwV})[tab]());
 }
 const head=(t,sub)=>`<div class="title"><h1>${t}</h1><div class="rt"><small>${sub||''}</small>${tab==='settings'?'':'<button class="gear" data-a="tab:settings" aria-label="設定">⚙︎</button>'}</div></div>`;
 
@@ -476,6 +530,7 @@ function homeV(){
   let h=head('ホーム',ymLabel(m));
   h+=`<div class="hero"><div class="lab">純資産</div><div class="big ${T.net<0?'neg':''}">${yen(T.net)}</div>
   <div class="cols"><div><span>口座などの資産</span><b>${yen(T.assets)}</b></div><div><span>カード未払い</span><b>${yen(T.cards)}</b></div><div><span>ローン残高</span><b>${yen(T.loans)}</b></div></div></div>`;
+  {const pj=projectedMonthEnd();h+=`<button class="li" data-a="tab:nw" style="width:100%;margin:10px 0 0;border-radius:14px;background:var(--card)"><span class="ic">📈</span><div class="l"><div class="t">${ymLabel(m)}末の見込み 純資産</div><div class="s">月末ごとの推移を見る</div></div><div class="r">${yen(pj.net)}</div></button>`}
   h+=fcCard(false);
   h+=`<div class="sec">今月のお金<button data-a="tab:chart">🥧 円グラフ</button></div><div class="list">
   <div class="li"><span>💰 収入</span><b class="pos">${yen(s.inc)}</b></div>
@@ -568,7 +623,7 @@ function quickBox(){
 function assetsV(){
   if(!S.accounts.length)return head('資産')+quickBox()+'<div class="note">口座の行（例：三井住友銀行 50万円）を書くと、口座が作られます。カードやローンは、口座と一緒に書いてください。</div>';
   const T=totals();
-  let h=head('資産',yen(T.net))+`<button class="btn" data-a="tab:achart" style="margin-bottom:10px;width:100%">🥧 資産の円グラフを見る</button>`+quickBox();
+  let h=head('資産',yen(T.net))+`<button class="btn" data-a="tab:achart" style="margin-bottom:10px;width:100%">🥧 資産の円グラフを見る</button><button class="btn" data-a="tab:nw" style="margin-bottom:10px;width:100%">📈 月末の純資産の推移を見る</button>`+quickBox();
   h+=`<div class="sec">口座・現金<button data-a="acc:new">追加</button></div><div class="list">${S.accounts.map(a=>`<button class="li" data-a="acc:${a.id}"><span class="ic">${esc(a.icon||'🏧')}</span><div class="l"><div class="t">${esc(a.name)}</div></div><div class="r">${yen(accBal(a))}</div></button>`).join('')}</div>`;
   h+=`<div class="sec">クレジットカード<button data-a="card:new">追加</button></div>`;
   h+=S.cards.length?`<div class="list">${S.cards.map(c=>{const i=cardInfo(c),cy=cardCycle(c);return`<button class="li" data-a="card:${c.id}"><span class="ic">${esc(c.icon||'💳')}</span><div class="l"><div class="t">${esc(c.name)}</div><div class="s">${cardRule(c)}</div><div class="s">次の締め日 ${mdLabel(cy.closeDate)}（${cy.days>0?'あと'+cy.days+'日':'今日'}）・今回の利用 ${yen(cy.use)}</div><div class="s">${i.next?'次回の引き落とし '+mdLabel(i.next.pay)+' '+yen(i.next.total):'引き落とし予定なし'}</div></div><div class="r">${yen(i.unpaid)}<div class="s">未払い</div></div></button>`}).join('')}</div>`:`<div class="note">カードを追加すると、締め日・引き落とし日に合わせて未払い額を自動計算します。</div>`;
