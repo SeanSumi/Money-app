@@ -408,8 +408,8 @@ function fcEvents(){
   });
   return ev.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
 }
-function forecast(){
-  const t=today(),ev=fcEvents();
+function forecast(till){
+  const t=today(),ev=fcEvents().filter(e=>!till||e.date<=till);
   const rows=S.accounts.map(a=>{
     const now=accBal(a);let b=now,min=now,minD=t,firstNeg=now<0?t:null;const es=[];
     ev.filter(e=>e.acc===a.id).forEach(e=>{b+=e.amt;es.push({...e,bal:b});if(b<min){min=b;minD=e.date}if(b<0&&!firstNeg)firstNeg=e.date});
@@ -420,6 +420,17 @@ function forecast(){
   return{rows,total:{now,min:tmin,minD:tminD,short:tmin<0?-tmin:0},ev};
 }
 const projBal=(a,date)=>accBal(a)+fcEvents().filter(e=>e.acc===a.id&&e.date<=date).reduce((x,e)=>x+e.amt,0);
+function fcNow(){
+  if(!S.accounts.length)return'';
+  const t=today(),me=monthEnd(ymOf(t)),f=forecast(me),tot=f.rows.reduce((a,r)=>a+r.now,0),bad=f.rows.filter(r=>r.short);
+  let h=`<div class="sec">資金（いまの残高）</div><div class="list">`;
+  f.rows.forEach(r=>{h+=`<div class="li"><span>${esc(r.a.icon||'🏧')} ${esc(r.a.name)}</span><b class="${r.now<0?'neg':''}">${yen(r.now)}</b></div>`});
+  if(f.rows.length>1)h+=`<div class="li"><span class="mute">合計</span><b class="${tot<0?'neg':''}">${yen(tot)}</b></div>`;
+  h+=`</div>`;
+  h+=bad.length?`<div class="note" style="color:var(--neg)">今月末までに足りなくなります：${bad.map(r=>esc(r.a.name)+' '+mdLabel(r.firstNeg)+' に最大 '+yen(r.short)+' 不足').join('／')}。くわしくは収支タブの資金チェックへ。</div>`:`<div class="note">今月末までの引き落としは、いまの残高で足ります。</div>`;
+  if(!S.recs.some(r=>r.type==='income'))h+=`<div class="note">給与の予定が未登録です。<button class="btn" data-a="payday" style="margin-top:8px">給与を登録する（毎月10日）</button></div>`;
+  return h;
+}
 function fcCard(full){
   if(!S.accounts.length)return'';
   const f=forecast(),hasInc=S.recs.some(r=>r.type==='income');
@@ -548,7 +559,7 @@ function homeV(){
   h+=`<div class="hero"><div class="lab">純資産</div><div class="big ${T.net<0?'neg':''}">${yen(T.net)}</div>
   <div class="cols"><div><span>口座などの資産</span><b>${yen(T.assets)}</b></div><div><span>カード未払い</span><b>${yen(T.cards)}</b></div><div><span>ローン残高</span><b>${yen(T.loans)}</b></div></div></div>`;
   {const pj=projectedMonthEnd();h+=`<button class="li" data-a="tab:nw" style="width:100%;margin:10px 0 0;border-radius:14px;background:var(--card)"><span class="ic">📈</span><div class="l"><div class="t">${ymLabel(m)}末の見込み 純資産</div><div class="s">月末ごとの推移を見る</div></div><div class="r">${yen(pj.net)}</div></button>`}
-  h+=fcCard(false);
+  h+=fcNow();
   h+=`<div class="sec">今月のお金<button data-a="tab:chart">🥧 円グラフ</button></div><div class="list">
   <div class="li"><span>💰 収入</span><b class="pos">${yen(s.inc)}</b></div>
   <div class="li"><span>🛍️ 支出</span><b>${yen(s.exp)}</b></div>
