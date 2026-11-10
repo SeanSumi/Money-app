@@ -243,6 +243,20 @@ function mSum(m){
   S.txns.forEach(t=>{if(ymOf(t.date)!==m)return;if(t.type==='income')inc+=t.amount;else if(t.type==='expense'){exp+=t.amount;byCat[t.cat]=(byCat[t.cat]||0)+t.amount}else rep+=t.amount});
   return{inc,exp,rep,byCat};
 }
+function txnClass(x){
+  if(x.type==='loanpay')return'loan';
+  if(x.type!=='expense')return'';
+  const an=(S.accounts.find(a=>a.id===x.acc)||{}).name;
+  if(isFixedName(x.memo)||isFixedName(catName(x.cat))||(x.src&&!isLoanName(x.memo)))return'fixed';
+  if(isLoanName(x.memo)||isLoanName(an))return'loan';
+  return'var';
+}
+function monthSplit(m){
+  const o={inc:0,vari:0,fixed:0,loan:0,fixedPlan:0,loanPlan:0};
+  S.txns.forEach(x=>{if(ymOf(x.date)!==m)return;if(x.type==='income'){o.inc+=x.amount;return}const c=txnClass(x);if(c==='fixed')o.fixed+=x.amount;else if(c==='loan')o.loan+=x.amount;else if(c==='var')o.vari+=x.amount});
+  paymentsOf(m).forEach(p=>{if(p.done||String(p.act).startsWith('txn:'))return;if(p.kind==='fixed')o.fixedPlan+=p.amount;else if(p.kind==='loan')o.loanPlan+=p.amount});
+  return o;
+}
 function totals(){
   const assets=S.accounts.reduce((a,x)=>a+accBal(x),0),cards=S.cards.reduce((a,c)=>a+cardInfo(c).unpaid,0),loans=S.loans.reduce((a,l)=>a+loanState(l).bal,0);
   return{assets,cards,loans,net:assets-cards-loans};
@@ -554,7 +568,7 @@ function favs(n){
 const favTpl=f=>({type:'expense',memo:f.memo,amount:'',cat:f.cat,pay:f.pay,tags:tagStr(f.tags)});
 function homeV(){
   if(!S.accounts.length)return onboarding();
-  const T=totals(),m=ymOf(today()),s=mSum(m),left=s.inc-s.exp-s.rep,t=today();
+  const T=totals(),m=ymOf(today()),s=mSum(m),ms=monthSplit(m),left=s.inc-s.exp-s.rep,t=today();
   let h=head('ホーム',ymLabel(m));
   h+=`<div class="hero"><div class="lab">純資産</div><div class="big ${T.net<0?'neg':''}">${yen(T.net)}</div>
   <div class="cols"><div><span>口座などの資産</span><b>${yen(T.assets)}</b></div><div><span>カード未払い</span><b>${yen(T.cards)}</b></div><div><span>ローン残高</span><b>${yen(T.loans)}</b></div></div></div>`;
@@ -562,8 +576,9 @@ function homeV(){
   h+=fcNow();
   h+=`<div class="sec">今月のお金<button data-a="tab:chart">🥧 円グラフ</button></div><div class="list">
   <div class="li"><span>💰 収入</span><b class="pos">${yen(s.inc)}</b></div>
-  <div class="li"><span>🛍️ 支出</span><b>${yen(s.exp)}</b></div>
-  <div class="li"><span>🏦 ローン返済</span><b>${yen(s.rep)}</b></div>
+  <div class="li"><span>🛍️ 支出（変動費）</span><b>${yen(ms.vari)}</b></div>
+  <div class="li"><span>📅 固定費</span><span style="text-align:right"><b>${yen(ms.fixed)}</b>${ms.fixedPlan?`<div class="s">このあと予定 ${yen(ms.fixedPlan)}</div>`:''}</span></div>
+  <div class="li"><span>🏦 ローン返済</span><span style="text-align:right"><b>${yen(ms.loan)}</b>${ms.loanPlan?`<div class="s">このあと予定 ${yen(ms.loanPlan)}</div>`:''}</span></div>
   <div class="li"><span>✨ 手元に残る額</span><b class="${left>=0?'pos':'neg'}">${yen(left)}</b></div></div>`;
   const tb=Object.values(S.budgets).reduce((a,v)=>a+num(v),0);
   if(tb>0){const p=s.exp/tb;h+=`<div class="sec">予算<button data-a="tab:budget">詳しく</button></div><div class="list"><div class="li" style="display:block"><div style="display:flex;justify-content:space-between"><span>支出 ${yen(s.exp)} / ${yen(tb)}</span><b class="${p>1?'neg':''}">${yen(tb-s.exp)} ${p>1?'超過':'残り'}</b></div><div class="bar"><i class="${p>1?'over':p>.85?'near':''}" style="width:${Math.min(100,p*100)}%"></i></div></div></div>`}
