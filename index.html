@@ -378,6 +378,44 @@ function calV(){
   if(bills.length)h+=`<div class="list">${bills.map(p=>`<button class="li" data-a="${p.act}"><span class="ic">${KICON[p.kind]}</span><div class="l"><div class="t">${esc(p.name)}</div><div class="s">${KINDS[p.kind]}${p.sub?' ・ '+esc(p.sub):''} ・ ${p.done?'済':'予定'}</div></div><div class="r ${p.kind==='income'?'pos':''}">${p.kind==='income'?'+':''}${yen(p.amount)}</div></button>`).join('')}</div>`;
   if(dayTx.length)h+=`<div class="list" style="margin-top:8px">${dayTx.map(txnRow).join('')}</div>`;
   if(!bills.length&&!dayTx.length)h+=`<div class="empty"><p>この日の記録・予定はありません</p></div>`;
+  if(calDay>=t)h+=`<div class="sec">この日の終わりの口座残高（見込み）</div><div class="list">${S.accounts.map(a=>{const b=projBal(a,calDay);return`<div class="li"><span>${esc(a.icon||'🏧')} ${esc(a.name)}</span><b class="${b<0?'neg':''}">${yen(b)}</b></div>`}).join('')}</div>`;
+  return h;
+}
+function fcEvents(){
+  const t=today(),cur=ymOf(t),d=new Date(t);d.setUTCDate(d.getUTCDate()+60);const lim=d.toISOString().slice(0,10);
+  const ev=[];
+  for(let i=0;i<3;i++)paymentsOf(addM(cur,i)).forEach(p=>{
+    if(p.done||!p.acc||p.date<=t||p.date>lim)return;
+    ev.push({date:p.date,acc:p.acc,amt:p.kind==='income'?p.amount:-p.amount,name:p.name,kind:p.kind});
+  });
+  return ev.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+}
+function forecast(){
+  const t=today(),ev=fcEvents();
+  const rows=S.accounts.map(a=>{
+    const now=accBal(a);let b=now,min=now,minD=t,firstNeg=now<0?t:null;const es=[];
+    ev.filter(e=>e.acc===a.id).forEach(e=>{b+=e.amt;es.push({...e,bal:b});if(b<min){min=b;minD=e.date}if(b<0&&!firstNeg)firstNeg=e.date});
+    return{a,now,end:b,min,minD,firstNeg,short:min<0?-min:0,es};
+  });
+  let b=S.accounts.reduce((x,a)=>x+accBal(a),0),tmin=b,tminD=t;const now=b;
+  ev.forEach(e=>{b+=e.amt;if(b<tmin){tmin=b;tminD=e.date}});
+  return{rows,total:{now,min:tmin,minD:tminD,short:tmin<0?-tmin:0},ev};
+}
+const projBal=(a,date)=>accBal(a)+fcEvents().filter(e=>e.acc===a.id&&e.date<=date).reduce((x,e)=>x+e.amt,0);
+function fcCard(full){
+  if(!S.accounts.length)return'';
+  const f=forecast(),hasInc=S.recs.some(r=>r.type==='income');
+  let h=`<div class="sec">資金チェック（これから60日）</div><div class="list">`;
+  f.rows.forEach(r=>{
+    const ok=!r.short;
+    h+=`<div class="li" style="display:block"><div style="display:flex;justify-content:space-between"><span>${esc(r.a.icon||'🏧')} ${esc(r.a.name)}</span><b>${yen(r.now)}</b></div>
+    <div class="s" style="margin-top:3px;color:${ok?'var(--pos)':'var(--neg)'}">${ok?'不足なし（いちばん少ない日で '+yen(r.min)+'）':mdLabel(r.firstNeg)+' に足りなくなります。最大 '+yen(r.short)+' 不足（'+mdLabel(r.minD)+'）→ '+yen(r.short)+' 以上を入金してください'}</div>`;
+    if(full&&r.es.length)h+=`<div style="margin-top:6px">${r.es.map(e=>`<div class="s" style="display:flex;justify-content:space-between"><span>${mdLabel(e.date)} ${esc(e.name)}</span><span>${e.amt>0?'+':'−'}${yen(Math.abs(e.amt))} → ${yen(e.bal)}</span></div>`).join('')}</div>`;
+    h+=`</div>`;
+  });
+  if(f.rows.length>1)h+=`<div class="li"><span class="mute">全口座の合計（いちばん少ない日 ${mdLabel(f.total.minD)}）</span><b class="${f.total.short?'neg':'pos'}">${yen(f.total.min)}</b></div>`;
+  h+=`</div>`;
+  if(!hasInc)h+=`<div class="note">給与などの入金予定が登録されていないため、入金は計算に入っていません。<button class="btn" data-a="payday" style="margin-top:8px">給与を登録する（毎月10日）</button></div>`;
   return h;
 }
 let apie='asset';
@@ -438,6 +476,7 @@ function homeV(){
   let h=head('ホーム',ymLabel(m));
   h+=`<div class="hero"><div class="lab">純資産</div><div class="big ${T.net<0?'neg':''}">${yen(T.net)}</div>
   <div class="cols"><div><span>口座などの資産</span><b>${yen(T.assets)}</b></div><div><span>カード未払い</span><b>${yen(T.cards)}</b></div><div><span>ローン残高</span><b>${yen(T.loans)}</b></div></div></div>`;
+  h+=fcCard(false);
   h+=`<div class="sec">今月のお金<button data-a="tab:chart">🥧 円グラフ</button></div><div class="list">
   <div class="li"><span>💰 収入</span><b class="pos">${yen(s.inc)}</b></div>
   <div class="li"><span>🛍️ 支出</span><b>${yen(s.exp)}</b></div>
@@ -478,6 +517,7 @@ function txnsV(){
   const cats=S.cats.filter(c=>used.has(c.id));
   h+=`<div class="chiprow"><button data-a="cf:" class="${cf?'':'on'}">すべて</button><button data-a="cf:income" class="${cf==='income'?'on':''}">💰 収入</button>${cats.map(c=>`<button data-a="cf:${c.id}" class="${cf===c.id?'on':''}">${esc(catIcon(c.id))} ${esc(c.name)}</button>`).join('')}<button data-a="cf:loanpay" class="${cf==='loanpay'?'on':''}">🏦 ローン返済</button></div>`;
   if(tags.length)h+=`<div class="chiprow"><button data-a="tf:" class="${tf?'':'on'}">タグ：すべて</button>${tags.map(x=>`<button data-a="tf:${esc(x.t)}" class="${tf===x.t?'on':''}">#${esc(x.t)} ${x.n}</button>`).join('')}</div>`;
+  h+=`<div class="chiprow">${S.accounts.map(a=>`<button style="background:var(--card);color:var(--ink)" data-a="tab:assets">${esc(a.icon||'🏧')} ${esc(a.name)} ${yen(accBal(a))}</button>`).join('')}</div>`;
   h+=`<div class="list"><div class="f"><span>🔍</span><input type="search" enterkeyhint="search" data-q="1" value="${esc(q)}" placeholder="メモ・カテゴリ・タグ・金額で検索" aria-label="検索"></div></div>`;
   h+=`<div class="seg sc"><button data-a="allp:0" class="${allp?'':'on'}">月ごと</button><button data-a="allp:1" class="${allp?'on':''}">全期間</button><button data-a="srt:date" class="${srt==='date'?'on':''}">日付順</button><button data-a="srt:big" class="${srt==='big'?'on':''}">金額が大きい順</button><button data-a="srt:small" class="${srt==='small'?'on':''}">金額が小さい順</button></div>`;
   h+=`<button class="btn" data-a="tab:chart" style="margin:0 0 10px">🥧 月ごとの比較（円グラフ）</button>`;
@@ -539,23 +579,23 @@ function assetsV(){
 const KINDS={income:'給与・収入',card:'カード',loan:'ローン返済',fixed:'固定費',other:'現金・口座'};
 function paymentsOf(m){
   const t=today(),cur=ymOf(t),out=[];
-  S.cards.forEach(c=>cardInfo(c).st.forEach(s=>{if(ymOf(s.pay)===m)out.push({date:s.pay,name:cardPayName(c),sub:Number(s.key.slice(5))+'月締め・'+s.n+'件',kind:'card',amount:s.total,done:s.pay<=t,act:'card:'+c.id})}));
+  S.cards.forEach(c=>cardInfo(c).st.forEach(s=>{if(ymOf(s.pay)===m)out.push({date:s.pay,name:cardPayName(c),sub:Number(s.key.slice(5))+'月締め・'+s.n+'件',kind:'card',amount:s.total,done:s.pay<=t,act:'card:'+c.id,acc:c.acc})}));
   S.txns.forEach(x=>{
     if(ymOf(x.date)!==m)return;
-    if(x.type==='income')out.push({date:x.date,name:x.memo||'収入',sub:payName(x)+' に入金',kind:'income',amount:x.amount,done:x.date<=t,act:'txn:'+x.id});
-    else if(x.type==='loanpay')out.push({date:x.date,name:(S.loans.find(l=>l.id===x.loan)||{name:'ローン'}).name,sub:'',kind:'loan',amount:x.amount,done:x.date<=t,act:'txn:'+x.id});
-    else if(x.type==='expense'&&!x.card)out.push({date:x.date,name:x.memo||catName(x.cat),sub:catName(x.cat)+' ・ '+payName(x),kind:(()=>{const an=(S.accounts.find(a=>a.id===x.acc)||{}).name;if(isFixedName(x.memo)||isFixedName(catName(x.cat)))return'fixed';if(isLoanName(an)||isLoanName(x.memo))return'loan';if(isCardName(an)||isCardName(x.memo))return'card';return x.src?'fixed':'other'})(),amount:x.amount,done:x.date<=t,act:'txn:'+x.id});
+    if(x.type==='income')out.push({date:x.date,name:x.memo||'収入',sub:payName(x)+' に入金',kind:'income',amount:x.amount,done:x.date<=t,act:'txn:'+x.id,acc:x.acc});
+    else if(x.type==='loanpay')out.push({date:x.date,name:(S.loans.find(l=>l.id===x.loan)||{name:'ローン'}).name,sub:'',kind:'loan',amount:x.amount,done:x.date<=t,act:'txn:'+x.id,acc:x.acc});
+    else if(x.type==='expense'&&!x.card)out.push({date:x.date,name:x.memo||catName(x.cat),sub:catName(x.cat)+' ・ '+payName(x),kind:(()=>{const an=(S.accounts.find(a=>a.id===x.acc)||{}).name;if(isFixedName(x.memo)||isFixedName(catName(x.cat)))return'fixed';if(isLoanName(an)||isLoanName(x.memo))return'loan';if(isCardName(an)||isCardName(x.memo))return'card';return x.src?'fixed':'other'})(),amount:x.amount,done:x.date<=t,act:'txn:'+x.id,acc:x.acc});
   });
   if(m>=cur){
     S.loans.forEach(l=>{
       if(!(num(l.monthly)>0&&l.payDay)||loanState(l).bal<=0)return;
       if(S.txns.some(x=>x.type==='loanpay'&&x.loan===l.id&&ymOf(x.date)===m))return;
-      const d=dayStr(m,num(l.payDay));if(d>t)out.push({date:d,name:l.name,sub:'予定（毎月自動）',kind:'loan',amount:num(l.monthly),done:false,act:'loan:'+l.id});
+      const d=dayStr(m,num(l.payDay));if(d>t)out.push({date:d,name:l.name,sub:'予定（毎月自動）',kind:'loan',amount:num(l.monthly),done:false,act:'loan:'+l.id,acc:l.acc});
     });
     S.recs.forEach(r=>{
       if(r.card)return;
       if(S.txns.some(x=>x.src===r.id&&ymOf(x.date)===m))return;
-      const d=dayStr(m,num(r.day)||1);if(d>t)out.push({date:d,name:r.name,sub:(r.type==='income'?'入金予定':catName(r.cat))+' ・ 予定（毎月自動）',kind:r.type==='income'?'income':(()=>{const an=(S.accounts.find(a=>a.id===r.acc)||{}).name;return isFixedName(r.name)||isFixedName(catName(r.cat))?'fixed':isLoanName(r.name)||isLoanName(an)?'loan':isCardName(r.name)||isCardName(an)?'card':'fixed'})(),amount:num(r.amount),done:false,act:'rec:'+r.id});
+      const d=dayStr(m,num(r.day)||1);if(d>t)out.push({date:d,name:r.name,sub:(r.type==='income'?'入金予定':catName(r.cat))+' ・ 予定（毎月自動）',kind:r.type==='income'?'income':(()=>{const an=(S.accounts.find(a=>a.id===r.acc)||{}).name;return isFixedName(r.name)||isFixedName(catName(r.cat))?'fixed':isLoanName(r.name)||isLoanName(an)?'loan':isCardName(r.name)||isCardName(an)?'card':'fixed'})(),amount:num(r.amount),done:false,act:'rec:'+r.id,acc:r.acc});
     });
   }
   return out.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
@@ -568,6 +608,7 @@ function payV(){
   let h=head('収支')+`<div class="mnav"><button class="ib" data-a="mon:-1" aria-label="前の月">‹</button><b>${ymLabel(mon)}</b><button class="ib" data-a="mon:1" aria-label="次の月">›</button></div>
   <div class="hero"><div class="lab">収入 − 支払い（手元に残る額）</div><div class="big ${diff<0?'neg':''}">${yen(diff)}</div>
   <div class="cols"><div><span>収入</span><b class="pos">${yen(income)}</b></div><div><span>支払い合計</span><b>${yen(payTotal)}</b></div><div><span>うち予定</span><b>${yen(payPlan)}</b></div></div></div>
+  ${fcCard(true)}
   <div class="sec">種類別</div><div class="list"><div class="li"><span>${KICON.income} ${KINDS.income}</span><b class="pos">+${yen(income).replace('-','')}</b></div>${['card','loan','fixed','other'].map(k=>{const a=sum(pays.filter(p=>p.kind===k));return`<div class="li"><span>${KICON[k]} ${KINDS[k]}</span><span><b>${yen(a)}</b> <span class="s">${payTotal?Math.round(a/payTotal*100):0}%</span></span></div>`}).join('')}</div>
   <div class="sec">一覧</div>
   <div class="seg sc">${[['all','すべて'],['income','収入'],['card','カード'],['loan','ローン'],['fixed','固定費'],['other','現金']].map(o=>`<button data-a="pf:${o[0]}" class="${pf===o[0]?'on':''}">${o[1]}</button>`).join('')}</div>`;
@@ -848,9 +889,10 @@ function openLoan(id){
       gen()},
     del:ex?()=>{if(S.txns.some(x=>x.loan===ex.id&&x.src!==ex.id))return'手入力の返済記録があるため削除できません';S.txns=S.txns.filter(x=>x.loan!==ex.id);S.loans=S.loans.filter(l=>l.id!==ex.id)}:null});
 }
-function openRec(id){
+function openRec(id,tpl){
   const ex=id&&S.recs.find(r=>r.id===id);
   const v=ex?{type:ex.type,name:ex.name,amount:ex.amount,day:ex.day,tags:tagStr(ex.tags),cat:ex.cat,pay:ex.card?'c:'+ex.card:'a:'+ex.acc}:{type:'expense',name:'',amount:'',day:25,tags:'',cat:S.cats[0]&&S.cats[0].id,pay:(payOpts()[0]||[''])[0]};
+  if(tpl&&!ex)Object.assign(v,tpl);
   openForm({title:ex?'固定項目を編集':'固定項目を追加',vals:v,
     fields:v=>{
       const f=[{type:'seg',k:'type',options:[['expense','支出'],['income','収入']]},{k:'name',label:'名前',type:'text',ph:'例：家賃、給料'},{k:'amount',label:'金額',type:'number',ph:'0'},{k:'day',label:'毎月の日',type:'number'}];
@@ -1160,6 +1202,7 @@ document.addEventListener('click',e=>{
     const its=parseAssetText(abkText),n=its.filter(x=>x.kind!=='bad').length,bad=its.length-n;
     abkText='';abkMsg=n+'件を登録しました'+(bad?'（読み取れない'+bad+'行は登録していません）':'');tab='assets';save();render();window.scrollTo(0,0)}
   else if(a==='apie'){apie=arg;render()}
+  else if(a==='payday'){openRec(null,{type:'income',name:'給与',day:10,pay:S.accounts[0]?'a:'+S.accounts[0].id:''})}
   else if(a==='cf'){cf=arg||'';render()}
   else if(a==='fav'){const f=favs(6)[Number(arg)];if(f)openTxn(null,'manual',favTpl(f))}
   else if(a==='srt'){srt=arg;render()}
