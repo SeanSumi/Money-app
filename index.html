@@ -434,10 +434,8 @@ function calV(){
   const cumAll=fut?evs.filter(e=>e.amt<0&&e.date<=calDay).reduce((x,e)=>x-e.amt,0):dayAll,dAll=nowAll-cumAll;
   const row=(l,v,c)=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0"><span class="mute">${l}</span><b${c?` class="${c}"`:''}>${v}</b></div>`;
   h+=`<div class="list" style="margin-bottom:10px;padding:10px 14px"><div style="font-weight:700;padding-bottom:4px">全銀行の総額</div>
-  ${row('現在の残高の合計',yen(nowAll))}
-  ${row('この日の支払い額の合計',yen(dayAll))}
-  ${fut?row('今日からこの日までの支払い額の合計',yen(cumAll)):''}
-  ${row('総額での比較（現在の残高の合計 − 支払い額の合計）',(dAll<0?'不足 ':'余り ')+yen(Math.abs(dAll)),dAll<0?'neg':'pos')}
+  ${row(fut?'今日からこの日までの支払い額の合計':'この日の支払い額の合計',yen(cumAll))}
+  ${row('残高との比較（現在の残高の合計 − 支払い額の合計）',(dAll<0?'不足 ':'余り ')+yen(Math.abs(dAll)),dAll<0?'neg':'pos')}
   </div>`;}}
   {const dp=pays.filter(p=>p.date===calDay),sm=k=>dp.filter(p=>p.kind===k).reduce((x,p)=>x+p.amount,0),c=sm('card'),l=sm('loan');
   h+=`<div class="list"><div class="li"><span>💳 カード支払いの合計</span><b>${yen(c)}</b></div><div class="li"><span>🏦 ローンの合計</span><b>${yen(l)}</b></div><div class="li"><span><b>合計（カード＋ローン）</b></span><b>${yen(c+l)}</b></div></div>`;}
