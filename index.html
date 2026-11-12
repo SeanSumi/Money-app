@@ -415,8 +415,21 @@ function calV(){
   const bills=pays.filter(p=>p.date===calDay&&!String(p.act).startsWith('txn:'));
   h+=`<div class="sec">${dLabel(calDay)}</div>`;
   {const byA={};pays.filter(p=>p.date===calDay&&p.kind!=='income'&&p.acc).forEach(p=>{byA[p.acc]=(byA[p.acc]||0)+p.amount});
-  const ids=Object.keys(byA);
-  h+=`<div class="sec">銀行ごとの支払い</div><div class="list">${ids.length?ids.map(id=>{const a=S.accounts.find(x=>x.id===id)||{name:'口座'};return`<div class="li"><span>${esc(a.icon||'🏧')} ${esc(a.name)}</span><b>${yen(byA[id])}</b></div>`}).join('')+(ids.length>1?`<div class="li"><span class="mute">合計</span><b>${yen(ids.reduce((x,id)=>x+byA[id],0))}</b></div>`:''):`<div class="li"><span class="mute">この日の支払いはありません</span><b>${yen(0)}</b></div>`}</div>`;}
+  const ids=Object.keys(byA),fut=calDay>t,evs=fut?fcEvents():[];
+  h+=`<div class="sec">銀行ごとの支払い</div>`;
+  if(!ids.length)h+=`<div class="list"><div class="li"><span class="mute">この日の支払いはありません</span></div></div>`;
+  else{
+    h+=ids.map(id=>{
+      const a=S.accounts.find(x=>x.id===id)||{name:'口座'},now=a.id?accBal(a):0,day=byA[id];
+      const cum=fut?evs.filter(e=>e.acc===id&&e.amt<0&&e.date<=calDay).reduce((x,e)=>x-e.amt,0):day;
+      const diff=now-cum,row=(l,v,c)=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0"><span class="mute">${l}</span><b${c?` class="${c}"`:''}>${v}</b></div>`;
+      return`<div class="list" style="margin-bottom:10px;padding:10px 14px"><div style="font-weight:700;padding-bottom:4px">${esc(a.icon||'🏧')} ${esc(a.name)}</div>
+      ${row('現在の残高',yen(now))}
+      ${row('この日の支払い額',yen(day))}
+      ${fut?row('今日からこの日までの支払い額の合計',yen(cum)):''}
+      ${row('残高との比較（'+(fut?'現在の残高 − 支払い額の合計':'現在の残高 − この日の支払い額')+'）',(diff<0?'不足 ':'余り ')+yen(Math.abs(diff)),diff<0?'neg':'pos')}
+      </div>`}).join('')+`<div class="note">給与などの入金は、この比較に含めていません。</div>`;
+  }}
   {const dp=pays.filter(p=>p.date===calDay),sm=k=>dp.filter(p=>p.kind===k).reduce((x,p)=>x+p.amount,0),c=sm('card'),l=sm('loan');
   h+=`<div class="list"><div class="li"><span>💳 カード支払いの合計</span><b>${yen(c)}</b></div><div class="li"><span>🏦 ローンの合計</span><b>${yen(l)}</b></div><div class="li"><span><b>合計（カード＋ローン）</b></span><b>${yen(c+l)}</b></div></div>`;}
   if(bills.length)h+=`<div class="list">${bills.map(p=>`<button class="li" data-a="${p.act}"><span class="ic">${KICON[p.kind]}</span><div class="l"><div class="t">${esc(p.name)}</div><div class="s">${KINDS[p.kind]}${p.sub?' ・ '+esc(p.sub):''} ・ ${p.done?'済':'予定'}</div></div><div class="r ${p.kind==='income'?'pos':''}">${p.kind==='income'?'+':''}${yen(p.amount)}</div></button>`).join('')}</div>`;
