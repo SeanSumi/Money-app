@@ -398,7 +398,7 @@ function calV(){
   if(!S.accounts.length)return onboarding();
   const pays=paymentsOf(mon),byD={};
   S.txns.forEach(x=>{if(ymOf(x.date)===mon&&x.type==='expense'){(byD[x.date]=byD[x.date]||{ex:0,mk:new Set()}).ex+=x.amount}});
-  pays.forEach(p=>{if(p.kind==='income'||p.kind==='card'||p.kind==='loan'||(p.kind==='fixed'&&!p.done)){(byD[p.date]=byD[p.date]||{ex:0,mk:new Set()}).mk.add(p.kind==='income'?'💰':p.kind==='card'?'💳':p.kind==='loan'?'🏦':'📌')}});
+  pays.forEach(p=>{if(p.kind!=='income'&&p.acc){(byD[p.date]=byD[p.date]||{ex:0,mk:new Set()}).out=((byD[p.date]||{}).out||0)+p.amount}if(p.kind==='income'||p.kind==='card'||p.kind==='loan'||(p.kind==='fixed'&&!p.done)){(byD[p.date]=byD[p.date]||{ex:0,mk:new Set()}).mk.add(p.kind==='income'?'💰':p.kind==='card'?'💳':p.kind==='loan'?'🏦':'📌')}});
   const t=today();
   if(!calDay||ymOf(calDay)!==mon)calDay=ymOf(t)===mon?t:mon+'-01';
   const first=new Date(Number(mon.slice(0,4)),Number(mon.slice(5,7))-1,1),last=new Date(Number(mon.slice(0,4)),Number(mon.slice(5,7)),0).getDate();
@@ -408,9 +408,9 @@ function calV(){
   for(let i=0;i<first.getDay();i++)h+='<button class="out" tabindex="-1"></button>';
   for(let d=1;d<=last;d++){
     const ds=mon+'-'+String(d).padStart(2,'0'),o=byD[ds];
-    h+=`<button data-a="cal:${ds}" class="${ds===calDay?'sel':''} ${ds===t?'today':''}" aria-label="${d}日"><b>${d}</b><span class="mk">${o?[...o.mk].join(''):''}</span><span class="am">${o&&o.ex?shortYen(o.ex):''}</span></button>`;
+    h+=`<button data-a="cal:${ds}" class="${ds===calDay?'sel':''} ${ds===t?'today':''}" aria-label="${d}日"><b>${d}</b><span class="mk">${o?[...o.mk].join(''):''}</span><span class="am" style="color:${o&&o.out?'var(--ink)':'var(--mute)'};font-weight:${o&&o.out?'700':'400'}">${o&&o.out?shortYen(o.out):''}</span></button>`;
   }
-  h+='</div><div class="note" style="margin-top:6px">💳カード引き落とし　🏦ローン返済　💰収入　📌固定費の予定　数字はその日の支出</div>';
+  h+='</div><div class="note" style="margin-top:6px">💳カード引き落とし　🏦ローン返済　💰収入　📌固定費の予定　数字はその日に口座から出る支払い額の合計（日付を押すと内訳）</div>';
   const dayTx=S.txns.filter(x=>x.date===calDay).sort((a,b)=>b.amount-a.amount);
   const bills=pays.filter(p=>p.date===calDay&&!String(p.act).startsWith('txn:'));
   h+=`<div class="sec">${dLabel(calDay)}</div>`;
