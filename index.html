@@ -430,6 +430,8 @@ function calV(){
       ${row('残高との比較（'+(fut?'現在の残高 − 支払い額の合計':'現在の残高 − この日の支払い額')+'）',(diff<0?'不足 ':'余り ')+yen(Math.abs(diff)),diff<0?'neg':'pos')}
       </div>`}).join('')+`<div class="note">給与などの入金は、この比較に含めていません。</div>`;
   }
+  {const dep=depositsOf().filter(r=>r.date===calDay);
+  if(dep.length)h+=`<div class="sec">この日の入金・追加</div><div class="list">${dep.map(r=>{const a=S.accounts.find(x=>x.id===r.acc)||{name:'口座'};return`<div class="li"><div class="l"><div class="t">${esc(r.label)}</div><div class="s">${esc(a.name)}</div></div><div class="r ${r.amt>0?'pos':''}">${r.amt>0?'+':'−'}${yen(Math.abs(r.amt))}</div></div>`}).join('')}</div>`;}
   {const nowAll=S.accounts.reduce((x,a)=>x+accBal(a),0),dayAll=Object.values(byA).reduce((x,v)=>x+v,0);
   const cumAll=fut?evs.filter(e=>e.amt<0&&e.date<=calDay).reduce((x,e)=>x-e.amt,0):dayAll,dAll=nowAll-cumAll;
   const row=(l,v,c)=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0"><span class="mute">${l}</span><b${c?` class="${c}"`:''}>${v}</b></div>`;
@@ -694,6 +696,17 @@ function quickBox(){
   <div class="scanmsg ${abkMsg&&abkMsg[0]==='!'?'bad':''}" id="abkmsg">${esc((abkMsg||'').replace(/^!/,''))}</div>
   <div style="font-size:11px;color:var(--mute);margin-top:4px">同じ名前は上書きします。カード・ローン・固定費の引き落とし口座は、いちばん上の口座になります（あとで各画面で変えられます）。</div></div>`;
 }
+function depositsOf(){
+  const out=[];
+  S.txns.forEach(x=>{if(x.type==='income'&&x.acc&&S.accounts.some(a=>a.id===x.acc))out.push({date:x.date,acc:x.acc,amt:x.amount,label:x.memo||'入金',kind:'income'})});
+  S.accounts.forEach(a=>(a.log||[]).forEach(l=>out.push({date:l.date,acc:a.id,amt:l.amt,label:(l.amt>0?'残高に追加':'残高から出金')+(l.memo?'（'+l.memo+'）':''),kind:'adjust'})));
+  return out.sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0);
+}
+function depositsCard(){
+  const t=today(),rows=depositsOf().filter(r=>r.date<=t).slice(0,20);
+  if(!rows.length)return'';
+  return`<div class="sec">銀行への入金・追加の記録</div><div class="list">${rows.map(r=>{const a=S.accounts.find(x=>x.id===r.acc)||{name:'口座'};return`<div class="li"><span class="ic">${r.kind==='income'?'💰':'👛'}</span><div class="l"><div class="t">${esc(r.label)}</div><div class="s">${mdLabel(r.date)} ・ ${esc(a.name)}</div></div><div class="r ${r.amt>0?'pos':''}">${r.amt>0?'+':'−'}${yen(Math.abs(r.amt))}</div></div>`}).join('')}</div>`;
+}
 function settledCard(){
   const t=today(),d=new Date(t);d.setUTCDate(d.getUTCDate()-31);const cut=d.toISOString().slice(0,10),cur=ymOf(t);
   const rows=[...paymentsOf(addM(cur,-1)),...paymentsOf(cur)].filter(p=>p.done&&p.date>=cut&&p.date<=t&&p.acc&&(p.kind==='card'||p.kind==='loan'||p.kind==='fixed')).sort((a,b)=>a.date<b.date?1:-1);
@@ -706,6 +719,7 @@ function assetsV(){
   let h=head('資産',yen(T.net))+`<button class="btn" data-a="tab:achart" style="margin-bottom:10px;width:100%">🥧 資産の円グラフを見る</button><button class="btn" data-a="tab:nw" style="margin-bottom:10px;width:100%">📈 月末の純資産の推移を見る</button>`+quickBox();
   h+=`<div class="sec">口座・現金<button data-a="acc:new">追加</button></div><div class="list">${S.accounts.map(a=>`<button class="li" data-a="acc:${a.id}"><span class="ic">${esc(a.icon||'🏧')}</span><div class="l"><div class="t">${esc(a.name)}${a.main?' <span class="s">（メイン）</span>':''}</div></div><div class="r">${yen(accBal(a))}</div></button>`).join('')}</div><button class="btn" data-a="baladd" style="margin-top:10px;width:100%">＋ 残高に追加（入金・出金）</button>`;
   h+=settledCard();
+  h+=depositsCard();
   h+=`<div class="sec">クレジットカード<button data-a="card:new">追加</button></div>`;
   h+=S.cards.length?`<div class="list">${S.cards.map(c=>{const i=cardInfo(c),cy=cardCycle(c);return`<button class="li" data-a="card:${c.id}"><span class="ic">${esc(c.icon||'💳')}</span><div class="l"><div class="t">${esc(c.name)}</div><div class="s">${cardRule(c)}</div><div class="s">次の締め日 ${mdLabel(cy.closeDate)}（${cy.days>0?'あと'+cy.days+'日':'今日'}）・今回の利用 ${yen(cy.use)}</div><div class="s">${i.next?'次回の引き落とし '+mdLabel(i.next.pay)+' '+yen(i.next.total):'引き落とし予定なし'}</div></div><div class="r">${yen(i.unpaid)}<div class="s">未払い</div></div></button>`}).join('')}</div>`:`<div class="note">カードを追加すると、締め日・引き落とし日に合わせて未払い額を自動計算します。</div>`;
   h+=`<div class="sec">ローン<button data-a="loan:new">追加</button></div>`;
