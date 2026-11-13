@@ -629,7 +629,9 @@ function homeV(){
   h+=`<div class="sec">最近の取引<button data-a="tab:txns">すべて</button></div>`+(rec.length?`<div class="list">${rec.map(txnRow).join('')}</div>`:`<div class="empty"><p>右下の＋から最初の取引を記録しましょう</p></div>`);
   return h;
 }
+function adjRows(){const o=[];S.accounts.forEach(a=>(a.log||[]).forEach((l,i)=>o.push({adj:1,id:'adj'+a.id+'_'+i,date:l.date,type:'adjust',acc:a.id,delta:num(l.amt),amount:Math.abs(num(l.amt)),memo:l.memo||'',tags:[]})));return o}
 function txnRow(x){
+  if(x.adj){const a=S.accounts.find(z=>z.id===x.acc)||{name:'口座',icon:'🏧'};const up=x.delta>0;return`<button class="li" data-a="tab:assets"><span class="ic">${esc(a.icon||'🏧')}</span><div class="l"><div class="t">${esc(a.name)} ${up?'入金':'出金'}${x.memo?'（'+esc(x.memo)+'）':''}</div><div class="s">${mdLabel(x.date)} ・ 残高の${up?'追加':'引き出し'}</div></div><div class="r ${up?'pos':''}">${up?'+':'-'}${yen(x.amount).replace('-','')}</div></button>`}
   const sign=x.type==='income'?'+':'-',cls=x.type==='income'?'pos':'';
   const title=x.type==='loanpay'?((S.loans.find(l=>l.id===x.loan)||{name:'ローン'}).name+' 返済'):(x.memo||catName(x.cat));
   const sub=x.type==='loanpay'?payName(x):(x.type==='income'?'収入':catName(x.cat))+' ・ '+payName(x);
@@ -637,31 +639,32 @@ function txnRow(x){
   return`<button class="li" data-a="txn:${x.id}"><span class="ic">${ico}</span><div class="l"><div class="t">${esc(title)}</div><div class="s">${mdLabel(x.date)} ・ ${esc(sub)}${x.tags&&x.tags.length?' ・ '+x.tags.map(t=>'#'+esc(t)).join(' '):''}</div></div><div class="r ${cls}">${sign}${yen(x.amount).replace('-','')}</div></button>`;
 }
 let cf='',srt='date',allp=false,q='';
-function txnText(x){return[x.memo,x.type==='income'?'収入':x.type==='loanpay'?'ローン返済':catName(x.cat),(x.tags||[]).join(' '),String(x.amount),payName(x)].join(' ').toLowerCase().replace(/\s+/g,'')}
+function txnText(x){if(x.adj)return[(S.accounts.find(a=>a.id===x.acc)||{}).name,'残高','入金','出金',x.memo,String(x.amount)].join(' ').toLowerCase().replace(/\s+/g,'');return[x.memo,x.type==='income'?'収入':x.type==='loanpay'?'ローン返済':catName(x.cat),(x.tags||[]).join(' '),String(x.amount),payName(x)].join(' ').toLowerCase().replace(/\s+/g,'')}
 function txnsV(){
   if(!S.accounts.length)return onboarding();
   const tags=allTags();
   if(tf&&!tags.some(x=>x.t===tf))tf='';
-  if(cf&&cf!=='income'&&cf!=='loanpay'&&!S.cats.some(c=>c.id===cf))cf='';
+  if(cf&&cf!=='income'&&cf!=='loanpay'&&cf!=='adjust'&&!S.cats.some(c=>c.id===cf))cf='';
   let h=head('取引');
   const used=new Set(S.txns.filter(x=>x.type==='expense').map(x=>x.cat));
   const cats=S.cats.filter(c=>used.has(c.id));
-  h+=`<div class="chiprow"><button data-a="cf:" class="${cf?'':'on'}">すべて</button><button data-a="cf:income" class="${cf==='income'?'on':''}">💰 収入</button>${cats.map(c=>`<button data-a="cf:${c.id}" class="${cf===c.id?'on':''}">${esc(catIcon(c.id))} ${esc(c.name)}</button>`).join('')}<button data-a="cf:loanpay" class="${cf==='loanpay'?'on':''}">🏦 ローン返済</button></div>`;
+  h+=`<div class="chiprow"><button data-a="cf:" class="${cf?'':'on'}">すべて</button><button data-a="cf:income" class="${cf==='income'?'on':''}">💰 収入</button>${cats.map(c=>`<button data-a="cf:${c.id}" class="${cf===c.id?'on':''}">${esc(catIcon(c.id))} ${esc(c.name)}</button>`).join('')}<button data-a="cf:loanpay" class="${cf==='loanpay'?'on':''}">🏦 ローン返済</button><button data-a="cf:adjust" class="${cf==='adjust'?'on':''}">🏧 残高の入出金</button></div>`;
   if(tags.length)h+=`<div class="chiprow"><button data-a="tf:" class="${tf?'':'on'}">タグ：すべて</button>${tags.map(x=>`<button data-a="tf:${esc(x.t)}" class="${tf===x.t?'on':''}">#${esc(x.t)} ${x.n}</button>`).join('')}</div>`;
   h+=`<div class="chiprow">${S.accounts.map(a=>`<button style="background:var(--card);color:var(--ink)" data-a="tab:assets">${esc(a.icon||'🏧')} ${esc(a.name)} ${yen(accBal(a))}</button>`).join('')}</div>`;
   h+=`<div class="list"><div class="f"><span>🔍</span><input type="search" enterkeyhint="search" data-q="1" value="${esc(q)}" placeholder="メモ・カテゴリ・タグ・金額で検索" aria-label="検索"></div></div>`;
   h+=`<div class="seg sc"><button data-a="allp:0" class="${allp?'':'on'}">月ごと</button><button data-a="allp:1" class="${allp?'on':''}">全期間</button><button data-a="srt:date" class="${srt==='date'?'on':''}">日付順</button><button data-a="srt:big" class="${srt==='big'?'on':''}">金額が大きい順</button><button data-a="srt:small" class="${srt==='small'?'on':''}">金額が小さい順</button></div>`;
   h+=`<button class="btn" data-a="tab:chart" style="margin:0 0 10px">🥧 月ごとの比較（円グラフ）</button>`;
   if(!allp)h+=`<div class="mnav"><button class="ib" data-a="mon:-1" aria-label="前の月">‹</button><b>${ymLabel(mon)}</b><button class="ib" data-a="mon:1" aria-label="次の月">›</button></div>`;
-  let list=S.txns.filter(x=>(allp||ymOf(x.date)===mon)&&(!tf||(x.tags||[]).includes(tf))&&(!q||txnText(x).includes(q.toLowerCase().replace(/\s+/g,'')))&&(!cf||(cf==='income'?x.type==='income':cf==='loanpay'?x.type==='loanpay':(x.type==='expense'&&x.cat===cf))));
+  let list=S.txns.concat(tf?[]:adjRows()).filter(x=>(allp||ymOf(x.date)===mon)&&(!tf||(x.tags||[]).includes(tf))&&(!q||txnText(x).includes(q.toLowerCase().replace(/\s+/g,'')))&&(!cf||(cf==='income'?x.type==='income':cf==='loanpay'?x.type==='loanpay':cf==='adjust'?!!x.adj:(x.type==='expense'&&x.cat===cf))));
   const sm=t=>list.filter(x=>x.type===t).reduce((a,x)=>a+x.amount,0);
   const ex=sm('expense'),inc=sm('income'),rep=sm('loanpay');
-  const label=(cf?(cf==='income'?'収入':cf==='loanpay'?'ローン返済':catIcon(cf)+' '+catName(cf)):'すべて')+(tf?' ＋ #'+tf:'')+'（'+(allp?'全期間':ymLabel(mon))+'）';
+  const label=(cf?(cf==='income'?'収入':cf==='loanpay'?'ローン返済':cf==='adjust'?'🏧 残高の入出金':catIcon(cf)+' '+catName(cf)):'すべて')+(tf?' ＋ #'+tf:'')+'（'+(allp?'全期間':ymLabel(mon))+'）';
   h+=`<div class="list"><div class="li"><span class="mute">${esc(label)}</span><b>${list.length}件</b></div>`
     +(ex||!cf?`<div class="li"><span class="mute">支出</span><b>${yen(ex)}</b></div>`:'')
     +(inc||!cf||cf==='income'?`<div class="li"><span class="mute">収入</span><b class="pos">${yen(inc)}</b></div>`:'')
     +(rep||!cf?`<div class="li"><span class="mute">ローン返済</span><b>${yen(rep)}</b></div>`:'')
-    +(list.length?`<div class="li"><span class="mute">1件あたり平均</span><b>${yen(Math.round(list.reduce((a,x)=>a+x.amount,0)/list.length))}</b></div>`:'')+`</div>`;
+    +(()=>{const ad=list.filter(x=>x.adj),up=ad.reduce((a,x)=>a+Math.max(0,x.delta),0),dn=ad.reduce((a,x)=>a+Math.max(0,-x.delta),0);return ad.length&&(!cf||cf==='adjust')?`<div class="li"><span class="mute">残高の入金</span><b class="pos">${yen(up)}</b></div><div class="li"><span class="mute">残高の出金</span><b>${yen(dn)}</b></div>`:''})()
+    +(()=>{const r=list.filter(x=>!x.adj);return r.length?`<div class="li"><span class="mute">1件あたり平均</span><b>${yen(Math.round(r.reduce((a,x)=>a+x.amount,0)/r.length))}</b></div>`:''})()+`</div>`;
   if(!list.length)return h+`<div class="empty" style="margin-top:14px"><p>該当する取引はありません</p></div>`;
   if(srt!=='date'){
     list=list.sort((a,b)=>srt==='big'?b.amount-a.amount:a.amount-b.amount);
@@ -883,7 +886,7 @@ function openTxn(id,mode,tpl){
 }
 function addToBalance(a,delta,memo){
   a.opening=num(a.opening)+delta;
-  a.log=(a.log||[]);a.log.unshift({date:today(),amt:delta,memo:memo||''});a.log=a.log.slice(0,30);
+  a.log=(a.log||[]);a.log.unshift({date:today(),amt:delta,memo:memo||''});a.log=a.log.slice(0,300);
 }
 function openBalAdd(id){
   const first=id&&S.accounts.find(a=>a.id===id)||mainAcc();
@@ -1506,7 +1509,6 @@ document.addEventListener('change',e=>{
 });
 try{const nv=$('#nav');nv.innerHTML=deco(nv.innerHTML)}catch(e){}
 initStore();
-if('serviceWorker' in navigator){window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').catch(()=>{})})}
 </script>
-</body>
+<script>f('serviceWorker' in navigator){window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').catch(()=>{})})}</script></body>
 </html>
