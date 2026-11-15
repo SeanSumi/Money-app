@@ -293,8 +293,8 @@ const KICON={income:'💰',card:'💳',loan:'🏦',fixed:'📌',other:'👛'};
 const TI={'カレンダー':'📅','円グラフ':'🥧','ホーム':'🏡','取引':'🧾','収支':'💸','予算':'🎯','資産':'💎','設定':'⚙️','マネー管理':'👛'};
 const cardRule=c=>(num(c.closing)?num(c.closing)+'日締め':'月末締め')+'・'+['当月','翌月','翌々月'][c.offset==null?1:num(c.offset)]+(num(c.payDay)||27)+'日払い';
 const cardPayName=c=>c.name.includes('カード')?c.name:c.name+'カード';
-const NAMEALIAS=[[/アメックス|アメリカンエキスプレス|americanexpress/g,'amex'],[/ペイペイ/g,'paypay'],[/アマゾン/g,'amazon'],[/エポス/g,'epos'],[/エーエヌエー/g,'ana'],[/三井住友カード|エスエムビーシー/g,'smbc'],[/楽天/g,'rakuten'],[/ゆうちょ|郵便貯金/g,'yucho']];
-function nameCore(n){let t=String(n||'').normalize('NFKC').toLowerCase().replace(/\s+/g,'');NAMEALIAS.forEach(a=>{t=t.replace(a[0],a[1])});return t.replace(/クレジットカード|クレジット|クレカ|カード|card|銀行|bank/g,'')}
+const NAMEALIAS=[[/アメックス|アメリカンエキスプレス|americanexpress/g,'amex'],[/ペイペイ/g,'paypay'],[/アマゾン/g,'amazon'],[/エポス/g,'epos'],[/エーエヌエー/g,'ana'],[/三井住友カード|エスエムビーシー/g,'smbc'],[/楽天/g,'rakuten'],[/ユウチョ|郵便貯金/g,'yucho'],[/ミツイスミトモ/g,'三井住友'],[/ミツビシ/g,'三菱'],[/ジェーシービー/g,'jcb'],[/ダイナース/g,'diners'],[/ドコモ/g,'docomo'],[/エスビーアイ/g,'sbi'],[/ラクテン/g,'rakuten'],[/ビザ/g,'visa'],[/ユーエフジェー/g,'ufj'],[/イオン/g,'aeon']];
+function nameCore(n){let t=String(n||'').normalize('NFKC').toLowerCase().replace(/\s+/g,'').replace(/[ぁ-ゖ]/g,c=>String.fromCharCode(c.charCodeAt(0)+96));NAMEALIAS.forEach(a=>{t=t.replace(a[0],a[1])});return t.replace(/クレジットカード|クレジット|クレカ|カード|card|銀行|bank/g,'')}
 function fuzzyFind(list,name){
   const n=nameCore(name);if(!n)return null;
   let ex=list.find(x=>nameCore(x.name)===n);if(ex)return ex;
@@ -1260,13 +1260,28 @@ function parseVoice(text){
 const DEBIT_RE=/引き?落とし?|引落|振り?落とし?|振替|口座から/;
 function payMatch(text){
   const t=String(text||'');let opts=payOpts().slice().sort((a,b)=>b[1].length-a[1].length);
-  if(DEBIT_RE.test(t)){const ac=opts.filter(o=>o[0][0]==='a');if(ac.length)opts=ac}
+  const deb=DEBIT_RE.test(t);
+  if(deb){const ac=opts.filter(o=>o[0][0]==='a');if(ac.length)opts=ac}
   for(const o of opts){const nm=o[1].replace('（カード）','');if(nm&&t.includes(nm))return[o[0],nm]}
   const toks=t.split(/[\s、。,　]+/).filter(w=>w.length>=3&&!/^[\d\/\-:.,円]+$/.test(w));
   for(const w of toks)for(const o of opts){const nm=o[1].replace('（カード）','');if(nm.includes(w))return[o[0],w]}
-  const tc=nameCore(t);
-  for(const o of opts){const c=nameCore(o[1].replace('（カード）',''));if(c.length>=3&&tc.includes(c))return[o[0],c]}
-  return[null,''];
+  /* あいまい照合：読み・略称・表記ゆれ・頭の2〜3文字でも拾う */
+  const tc=nameCore(t),wantCard=/カード|クレカ|クレジット/.test(t),wantAcc=deb||/銀行|口座|入金|現金/.test(t);
+  const cjk=/[^\x00-\x7f]/;let best=null,bs=0;
+  for(const o of opts){
+    const nm=o[1].replace('（カード）',''),c=nameCore(nm);if(c.length<2)continue;
+    let sc=0,hit='';
+    if(tc.includes(c)){sc=c.length>=3?6:5;hit=c}
+    else{
+      for(const w of toks.concat(t.split(/[\s、。,　]+/).filter(x=>x.length>=2))){const wc=nameCore(w);if(wc.length>=2&&(c.includes(wc)||wc.includes(c))){sc=Math.max(sc,4);hit=w}}
+      if(!sc){const k=cjk.test(c)?2:3;if(c.length>k&&tc.includes(c.slice(0,k))){sc=3;hit=c.slice(0,k)}}
+    }
+    if(!sc)continue;
+    const isCard=o[0][0]==='c';
+    if(wantCard&&isCard)sc+=1;if(wantAcc&&!isCard)sc+=1;
+    if(sc>bs){bs=sc;best=[o[0],hit]}
+  }
+  return best||[null,''];
 }
 function voicePay(text){
   const t=String(text||''),pm=payMatch(t);if(pm[0])return pm[0];
@@ -1510,5 +1525,5 @@ document.addEventListener('change',e=>{
 try{const nv=$('#nav');nv.innerHTML=deco(nv.innerHTML)}catch(e){}
 initStore();
 </script>
-<script>f('serviceWorker' in navigator){window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').catch(()=>{})})}</script></body>
+</body>
 </html>
