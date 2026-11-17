@@ -232,6 +232,22 @@ function accBal(a,withoutOpening){
   S.cards.forEach(c=>{if(c.acc===a.id)b-=cardInfo(c).debited});
   return b;
 }
+/* 表示する残高は「確定残高」。月末に一度だけ、確認してから反映する */
+const shownBal=a=>a.conf!=null?num(a.conf):accBal(a);
+const pendOf=a=>accBal(a)-shownBal(a);
+function setBal(a,v){a.opening=num(v)-accBal(a,true);a.conf=num(v);a.confDate=today()}
+function stlTarget(){
+  const t=today(),cm=ymOf(t),M=Number(t.slice(8))>=dim(cm)?cm:addM(cm,-1);
+  if(S.stlYm&&S.stlYm>=M)return null;
+  const cut=dayStr(M,31);
+  const rows=S.accounts.map(a=>{if(a.confDate&&a.confDate>cut)return null;const o=TODAY_O;TODAY_O=cut;let v;try{v=accBal(a)}finally{TODAY_O=o}return{a,from:shownBal(a),to:v,d:v-shownBal(a)}}).filter(r=>r&&r.d!==0);
+  return{M,cut,rows};
+}
+function settle(){const st=stlTarget();if(!st)return;st.rows.forEach(r=>{r.a.conf=r.to;r.a.confDate=st.cut});S.stlYm=st.M}
+function stlCard(){
+  const st=stlTarget();if(!st||!st.rows.length)return'';
+  return`<div class="sec">📅 ${Number(st.M.slice(5))}月末の残高反映</div><div class="list">${st.rows.map(r=>`<div class="li"><span>${esc(r.a.icon||'🏧')} ${esc(r.a.name)}</span><span style="text-align:right"><b>${yen(r.from)} → ${yen(r.to)}</b><div class="s ${r.d<0?'neg':'pos'}">${r.d<0?'−':'＋'}${yen(Math.abs(r.d))}</div></span></div>`).join('')}</div><div class="note">${Number(st.M.slice(5))}月末までの引き落とし・入金を、口座の残高に反映します。内容を確認してから押してください。<button class="btn" data-a="stl" style="margin-top:8px;width:100%">確認して反映する</button></div>`;
+}
 function loanState(l){
   let bal=num(l.bal0),pi=0,pp=0;const t=today();
   S.txns.filter(x=>x.type==='loanpay'&&x.loan===l.id&&x.date>l.asOf&&x.date<=t).sort((a,b)=>a.date<b.date?-1:1).forEach(x=>{
@@ -341,6 +357,8 @@ function linkCardBills(){
 }
 function gen(){
   const t=today(),cur=ymOf(t);let ch=syncAuto();if(linkCardBills())ch=true;
+  if(S.mig9!==1&&S.accounts){S.accounts.forEach(a=>{a.conf=accBal(a);a.confDate=t});S.stlYm=Number(t.slice(8))>=dim(cur)?cur:addM(cur,-1);S.mig9=1;ch=true}
+  {const st=stlTarget();if(st&&!st.rows.length){S.stlYm=st.M;ch=true}}
   const run=(src,kind)=>{
     let m=src.last?addM(src.last,1):(kind==='loan'?ymOf(src.asOf):(src.startYm||cur));
     if(m<addM(cur,-36))m=addM(cur,-36);
@@ -448,11 +466,12 @@ function calV(){
   if(!ids.length)h+=`<div class="list"><div class="li"><span class="mute">この日の支払いはありません</span></div></div>`;
   else{
     h+=ids.map(id=>{
-      const a=S.accounts.find(x=>x.id===id)||{name:'口座'},now=a.id?accBal(a):0,day=byA[id];
+      const a=S.accounts.find(x=>x.id===id)||{name:'口座'},now=a.id?shownBal(a):0,pd=a.id?pendOf(a):0,day=byA[id];
       const cum=fut?evs.filter(e=>e.acc===id&&e.amt<0&&e.date<=calDay).reduce((x,e)=>x-e.amt,0):day;
-      const diff=now-cum,row=(l,v,c)=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0"><span class="mute">${l}</span><b${c?` class="${c}"`:''}>${v}</b></div>`;
+      const diff=now+pd-cum,row=(l,v,c)=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0"><span class="mute">${l}</span><b${c?` class="${c}"`:''}>${v}</b></div>`;
       return`<div class="list" style="margin-bottom:10px;padding:10px 14px"><div style="font-weight:700;padding-bottom:4px">${esc(a.icon||'🏧')} ${esc(a.name)}</div>
       ${row('現在の残高',yen(now))}
+      ${pd?row('月末に反映予定（反映前の入出金）',(pd<0?'−':'＋')+yen(Math.abs(pd))):''}
       ${row('この日の支払い額',yen(day))}
       ${fut?row('今日からこの日までの支払い額の合計',yen(cum)):''}
       ${row('残高との比較（'+(fut?'現在の残高 − 支払い額の合計':'現在の残高 − この日の支払い額')+'）',(diff<0?'不足 ':'余り ')+yen(Math.abs(diff)),diff<0?'neg':'pos')}
@@ -497,9 +516,9 @@ function forecast(till){
 const projBal=(a,date)=>accBal(a)+fcEvents().filter(e=>e.acc===a.id&&e.date<=date).reduce((x,e)=>x+e.amt,0);
 function fcNow(){
   if(!S.accounts.length)return'';
-  const t=today(),me=monthEnd(ymOf(t)),f=forecast(me),tot=f.rows.reduce((a,r)=>a+r.now,0),bad=f.rows.filter(r=>r.short);
+  const t=today(),me=monthEnd(ymOf(t)),f=forecast(me),tot=f.rows.reduce((a,r)=>a+shownBal(r.a),0),bad=f.rows.filter(r=>r.short);
   let h=`<div class="sec">資金（いまの残高）</div><div class="list">`;
-  f.rows.forEach(r=>{h+=`<div class="li"><span>${esc(r.a.icon||'🏧')} ${esc(r.a.name)}</span><b class="${r.now<0?'neg':''}">${yen(r.now)}</b></div>`});
+  f.rows.forEach(r=>{h+=`<div class="li"><span>${esc(r.a.icon||'🏧')} ${esc(r.a.name)}</span><b class="${shownBal(r.a)<0?'neg':''}">${yen(shownBal(r.a))}</b></div>`});
   if(f.rows.length>1)h+=`<div class="li"><span class="mute">合計</span><b class="${tot<0?'neg':''}">${yen(tot)}</b></div>`;
   h+=`</div>`;
   h+=bad.length?`<div class="note" style="color:var(--neg)">今月末までに足りなくなります：${bad.map(r=>esc(r.a.name)+' '+mdLabel(r.firstNeg)+' に最大 '+yen(r.short)+' 不足').join('／')}。くわしくは収支タブの資金チェックへ。</div>`:`<div class="note">今月末までの引き落としは、いまの残高で足ります。</div>`;
@@ -578,7 +597,7 @@ function nwV(){
 let apie='asset';
 function achartV(){
   const T=totals();
-  const assets=S.accounts.map(a=>({name:a.name,icon:a.icon||'🏧',amt:accBal(a)})).filter(x=>x.amt>0);
+  const assets=S.accounts.map(a=>({name:a.name,icon:a.icon||'🏧',amt:shownBal(a)})).filter(x=>x.amt>0);
   const debts=S.loans.map(l=>({name:l.name,icon:l.icon||'🏦',amt:loanState(l).bal,sub:(num(l.monthly)>0?'月々 '+yen(num(l.monthly)):'')+(num(l.rate)?' ・年利'+l.rate+'%':'')})).filter(x=>x.amt>0);
   let rows=(apie==='asset'?assets:debts).sort((a,b)=>b.amt-a.amt);
   if(rows.length>10){const rest=rows.slice(9);rows=rows.slice(0,9);rows.push({name:'その他（'+rest.length+'件）',icon:'📦',amt:rest.reduce((a,x)=>a+x.amt,0)})}
@@ -651,7 +670,7 @@ function homeV(){
   if(up.length)h+=`<div class="sec">これからの支払い</div><div class="list">${up.slice(0,4).map(u=>`<div class="li"><span class="ic">${u.i}</span><div class="l"><div class="t">${esc(u.n)}</div><div class="s">${mdLabel(u.d)}</div></div><div class="r">${yen(u.a)}</div></div>`).join('')}</div>`;
   const fv=favs(6);
   if(fv.length)h+=`<div class="sec">よく使う（タップで入力）</div><div class="chips">${fv.map((f,i)=>`<button data-a="fav:${i}">${esc(catIcon(f.cat))} ${esc(f.memo)}</button>`).join('')}</div>`;
-  {const cm=ymOf(t),dd=Number(t.slice(8));if(S.accounts.length&&dd>=dim(cm)-2&&S.balMonth!==cm)h+=`<div class="note">📅 月末です。銀行口座の残高を、銀行アプリの金額に合わせて更新しましょう。<button class="btn" style="margin-top:8px" data-a="tab:assets">資産で残高を更新</button></div>`}
+  h+=stlCard();
   const lb=(()=>{try{return Number(localStorage.getItem('money-lastbackup'))||0}catch(e){return 0}})();
   if(S.txns.length>=10&&Date.now()-lb>30*86400000)h+=`<div class="note">💾 バックアップは取っていますか？ 設定の「データ」から書き出して、メモアプリなどに保管しておくと安心です。<button class="btn" style="margin-top:8px" data-a="tab:settings">設定を開く</button></div>`;
   const rec=[...S.txns].sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0).slice(0,5);
@@ -679,7 +698,7 @@ function txnsV(){
   const cats=S.cats.filter(c=>used.has(c.id));
   h+=`<div class="chiprow"><button data-a="cf:" class="${cf?'':'on'}">すべて</button><button data-a="cf:income" class="${cf==='income'?'on':''}">💰 収入</button>${cats.map(c=>`<button data-a="cf:${c.id}" class="${cf===c.id?'on':''}">${esc(catIcon(c.id))} ${esc(c.name)}</button>`).join('')}<button data-a="cf:loanpay" class="${cf==='loanpay'?'on':''}">🏦 ローン返済</button><button data-a="cf:adjust" class="${cf==='adjust'?'on':''}">🏧 残高の入出金</button></div>`;
   if(tags.length)h+=`<div class="chiprow"><button data-a="tf:" class="${tf?'':'on'}">タグ：すべて</button>${tags.map(x=>`<button data-a="tf:${esc(x.t)}" class="${tf===x.t?'on':''}">#${esc(x.t)} ${x.n}</button>`).join('')}</div>`;
-  h+=`<div class="chiprow">${S.accounts.map(a=>`<button style="background:var(--card);color:var(--ink)" data-a="tab:assets">${esc(a.icon||'🏧')} ${esc(a.name)} ${yen(accBal(a))}</button>`).join('')}</div>`;
+  h+=`<div class="chiprow">${S.accounts.map(a=>`<button style="background:var(--card);color:var(--ink)" data-a="tab:assets">${esc(a.icon||'🏧')} ${esc(a.name)} ${yen(shownBal(a))}</button>`).join('')}</div>`;
   h+=`<div class="list"><div class="f"><span>🔍</span><input type="search" enterkeyhint="search" data-q="1" value="${esc(q)}" placeholder="メモ・カテゴリ・タグ・金額で検索" aria-label="検索"></div></div>`;
   h+=`<div class="seg sc"><button data-a="allp:0" class="${allp?'':'on'}">月ごと</button><button data-a="allp:1" class="${allp?'on':''}">全期間</button><button data-a="srt:date" class="${srt==='date'?'on':''}">日付順</button><button data-a="srt:big" class="${srt==='big'?'on':''}">金額が大きい順</button><button data-a="srt:small" class="${srt==='small'?'on':''}">金額が小さい順</button></div>`;
   h+=`<button class="btn" data-a="tab:chart" style="margin:0 0 10px">🥧 月ごとの比較（円グラフ）</button>`;
@@ -761,7 +780,8 @@ function assetsV(){
   if(!S.accounts.length)return head('資産')+quickBox()+'<div class="note">口座の行（例：三井住友銀行 50万円）を書くと、口座が作られます。カードやローンは、口座と一緒に書いてください。</div>';
   const T=totals();
   let h=head('資産',yen(T.net))+`<button class="btn" data-a="tab:achart" style="margin-bottom:10px;width:100%">🥧 資産の円グラフを見る</button><button class="btn" data-a="tab:nw" style="margin-bottom:10px;width:100%">📈 月末の純資産の推移を見る</button>`+quickBox();
-  h+=`<div class="sec">口座・現金<button data-a="acc:new">追加</button></div><div class="list">${S.accounts.map(a=>`<button class="li" data-a="acc:${a.id}"><span class="ic">${esc(a.icon||'🏧')}</span><div class="l"><div class="t">${esc(a.name)}${a.main?' <span class="s">（メイン）</span>':''}</div></div><div class="r">${yen(accBal(a))}</div></button>`).join('')}</div><button class="btn" data-a="baladd" style="margin-top:10px;width:100%">＋ 残高に追加（入金・出金）</button>`;
+  h+=stlCard();
+  h+=`<div class="sec">口座・現金<button data-a="acc:new">追加</button></div><div class="list">${S.accounts.map(a=>`<button class="li" data-a="acc:${a.id}"><span class="ic">${esc(a.icon||'🏧')}</span><div class="l"><div class="t">${esc(a.name)}${a.main?' <span class="s">（メイン）</span>':''}</div></div><div class="r">${yen(shownBal(a))}${pendOf(a)?`<div class="s">月末に反映 ${pendOf(a)<0?'−':'＋'}${yen(Math.abs(pendOf(a)))}</div>`:''}</div></button>`).join('')}</div><button class="btn" data-a="baladd" style="margin-top:10px;width:100%">＋ 残高に追加（入金・出金）</button>`;
   h+=settledCard();
   h+=depositsCard();
   h+=`<div class="sec">クレジットカード<span><button data-a="cardbill">＋ 支払い額</button> <button data-a="card:new">追加</button></span></div>`;
@@ -927,7 +947,7 @@ function openTxn(id,mode,tpl){
 }
 function addToBalance(a,delta,memo){
   a.opening=num(a.opening)+delta;
-  S.balMonth=ymOf(today());a.log=(a.log||[]);a.log.unshift({date:today(),amt:delta,memo:memo||''});a.log=a.log.slice(0,300);
+  if(a.conf!=null)a.conf=num(a.conf)+delta;a.log=(a.log||[]);a.log.unshift({date:today(),amt:delta,memo:memo||''});a.log=a.log.slice(0,300);
 }
 function openBalAdd(id){
   const first=id&&S.accounts.find(a=>a.id===id)||mainAcc();
@@ -947,13 +967,13 @@ function openCardBill(id){
 }
 function openAcc(id){
   const ex=id&&S.accounts.find(a=>a.id===id);
-  const v={name:ex?ex.name:'',bal:ex?accBal(ex):'',icon:ex&&ex.icon||'🏧',main:!!(ex&&ex.main)};
+  const v={name:ex?ex.name:'',bal:ex?shownBal(ex):'',icon:ex&&ex.icon||'🏧',main:!!(ex&&ex.main)};
   openForm({title:ex?'口座を編集':'口座を追加',vals:v,
     fields:()=>[{k:'icon',type:'emoji',dflt:'🏧'},{k:'name',label:'名前',type:'text',ph:'例：普通預金'},{k:'bal',label:'現在の残高',type:'number',ph:'0'},{k:'main',label:'メイン口座（給与の入金先・引き落としの標準）',type:'check'},...(ex?[{k:'add',label:'残高に追加する金額（マイナスで減らす）',type:'number',ph:'例：50000'}]:[]),...(ex&&(ex.log||[]).length?[{type:'info',html:'最近の追加：'+ex.log.slice(0,3).map(l=>mdLabel(l.date)+' '+(l.amt>0?'+':'−')+yen(Math.abs(l.amt))+(l.memo?'（'+esc(l.memo)+'）':'')).join('、')}]:[]),{type:'info',html:'実際の残高を入れると、以降の取引で増減します。ズレたときはここで合わせ直せます。'}],
     save:v=>{if(!v.name.trim())return'名前を入力してください';
       if(v.main)S.accounts.forEach(a=>{a.main=false});
-      if(ex){ex.name=v.name.trim();ex.icon=v.icon;ex.main=!!v.main;ex.opening=num(v.bal)-accBal(ex,true);S.balMonth=ymOf(today());if(num(v.add))addToBalance(ex,num(v.add),'')}
-      else S.accounts.push({id:uid('a'),name:v.name.trim(),icon:v.icon,main:!!v.main,opening:num(v.bal)})},
+      if(ex){ex.name=v.name.trim();ex.icon=v.icon;ex.main=!!v.main;if(num(v.bal)!==shownBal(ex))setBal(ex,v.bal);if(num(v.add))addToBalance(ex,num(v.add),'')}
+      else S.accounts.push({id:uid('a'),name:v.name.trim(),icon:v.icon,main:!!v.main,opening:num(v.bal),conf:num(v.bal),confDate:today()})},
     del:ex?()=>{if(S.txns.some(x=>x.acc===ex.id)||S.cards.some(c=>c.acc===ex.id)||S.loans.some(l=>l.acc===ex.id)||S.recs.some(r=>r.acc===ex.id))return'この口座を使った取引や設定があるため削除できません';S.accounts=S.accounts.filter(a=>a.id!==ex.id)}:null});
 }
 function openCard(id){
@@ -1119,7 +1139,7 @@ function applyEdits(items){
     const c=x.ch;
     if(c.name)e.name=c.name;if(c.acc&&x.k!=='account')e.acc=c.acc;
     if(x.k==='card'){if(c.closing!=null)e.closing=c.closing;if(c.payDay!=null)e.payDay=c.payDay;if(c.offset!=null)e.offset=c.offset}
-    else if(x.k==='account'){if(c.add!=null)addToBalance(e,c.add,'');if(c.main){S.accounts.forEach(a=>{a.main=false});e.main=true}if(c.balance!=null)e.opening=c.balance-accBal(e,true)}
+    else if(x.k==='account'){if(c.add!=null)addToBalance(e,c.add,'');if(c.main){S.accounts.forEach(a=>{a.main=false});e.main=true}if(c.balance!=null)setBal(e,c.balance)}
     else if(x.k==='loan'){if(c.rate!=null)e.rate=c.rate;if(c.monthly!=null)e.monthly=c.monthly;if(c.payDay!=null)e.payDay=c.payDay;
       if(c.balance!=null&&Math.round(c.balance)!==Math.round(loanState(e).bal)){e.bal0=c.balance;e.asOf=today();e.last=ymOf(today())}}
     else{if(c.amount!=null)e.amount=c.amount;if(c.day!=null)e.day=c.day}
@@ -1135,7 +1155,7 @@ function applyAssetText(text,accId){
       if(needsAcc&&!accId&&!S.accounts.length&&!items.some(x=>x.kind==='account'))return'カードやローンには、引き落とし口座が必要です。口座の行も一緒に書いてください';
       items.filter(x=>x.kind==='account').forEach(x=>{
         const ex=fuzzyFind(S.accounts,x.name);
-        if(ex)ex.opening=x.balance-accBal(ex,true);else S.accounts.push({id:uid('a'),name:x.name,opening:x.balance});
+        if(ex)setBal(ex,x.balance);else S.accounts.push({id:uid('a'),name:x.name,opening:x.balance,conf:x.balance,confDate:today()});
       });
       const acc=accId||(mainAcc()&&mainAcc().id);
       items.filter(x=>x.kind==='card').forEach(c=>{
@@ -1532,6 +1552,7 @@ document.addEventListener('click',e=>{
     abkText='';abkMsg=n+'件を登録・変更しました'+(bad?'（読み取れない'+bad+'行は反映していません）':'')+(abkWarn.length?'　'+abkWarn.join('／'):'')+(lastSync?'　（今月以降の自動記録 '+lastSync+'件も更新しました）':'');tab='assets';save();render();window.scrollTo(0,0)}
   else if(a==='apie'){apie=arg;render()}
   else if(a==='baladd'){openBalAdd()}
+  else if(a==='stl'){settle();save();render()}
   else if(a==='cardbill'){openCardBill()}
   else if(a==='payday'){openRec(null,{type:'income',name:'給与',day:10,pay:mainAcc()?'a:'+mainAcc().id:''})}
   else if(a==='cf'){cf=arg||'';render()}
