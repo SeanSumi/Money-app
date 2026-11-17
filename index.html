@@ -222,7 +222,7 @@ function cardCycle(c){
 }
 function cardInfo(c){
   const m={},t=today();
-  S.txns.forEach(x=>{if(x.type==='expense'&&x.card===c.id&&(x.date<=t||x.bill)){const s=x.bill&&x.payDate?{key:addM(ymOf(x.payDate),-(c.offset==null?1:num(c.offset))),pay:x.payDate}:stmtOf(c,x.date);const e=m[s.key]||(m[s.key]={key:s.key,pay:s.pay,total:0,n:0});e.total+=x.amount;e.n++}});
+  S.txns.forEach(x=>{if(x.type==='expense'&&x.card===c.id){const s=x.bill&&x.payDate?{key:addM(ymOf(x.payDate),-(c.offset==null?1:num(c.offset))),pay:x.payDate}:stmtOf(c,x.date);const e=m[s.key]||(m[s.key]={key:s.key,pay:s.pay,total:0,n:0});e.total+=x.amount;e.n++}});
   const st=Object.values(m).sort((a,b)=>a.pay<b.pay?-1:1),up=st.filter(s=>s.pay>t);
   return{st,unpaid:up.reduce((a,s)=>a+s.total,0),debited:st.filter(s=>s.pay<=t).reduce((a,s)=>a+s.total,0),next:up[0]||null};
 }
@@ -329,16 +329,18 @@ function linkCardBills(){
   /* 「ANAカード支払い」のように口座から引き落とす形で入れた記録を、カードの請求額に紐づける（カレンダー・未払いに揃う） */
   let n=0;
   S.txns.forEach(x=>{
-    if(x.type!=='expense'||x.card||x.src||!x.acc||!isCardName(x.memo))return;
+    if(x.type!=='expense'||x.card||x.src||!x.acc||!x.memo)return;
     const nm=String(x.memo).replace(/支払い?|引き?落とし?|引落|請求額?|代金|利用額?|分/g,'');
-    const c=fuzzyFind(S.cards,nm);if(!c)return;
+    let c=fuzzyFind(S.cards,nm);
+    if(!c)return;
+    if(!isCardName(x.memo)){const k=nameCore(nm);if(!(k.length>=3&&S.cards.some(z=>nameCore(z.name)===k)))return}
     
     x.card=c.id;x.bill=true;x.man=true;x.payDate=x.date;x.acc=null;n++;
   });
   return n>0;
 }
 function gen(){
-  const t=today(),cur=ymOf(t);let ch=syncAuto();if(linkCardBills())ch=true;
+  const t=today(),cur=ymOf(t);let ch=syncAuto();if(linkCardBills())ch=true;{const ma=mainAcc();if(ma)S.cards.forEach(c=>{if(!c.acc||!S.accounts.some(a=>a.id===c.acc)){c.acc=ma.id;ch=true}})}
   const run=(src,kind)=>{
     let m=src.last?addM(src.last,1):(kind==='loan'?ymOf(src.asOf):(src.startYm||cur));
     if(m<addM(cur,-36))m=addM(cur,-36);
