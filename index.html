@@ -690,11 +690,23 @@ function budgetV(){
   return h;
 }
 let abkText='',abkMsg='';
+function nameChips(tgt){
+  const L=[...S.cards.map(c=>['💳',c.name]),...S.accounts.map(a=>['🏧',a.name]),...S.loans.map(l=>['🏦',l.name])];
+  if(!L.length)return'';
+  return`<div class="chips" style="margin:6px 0 2px">${L.map(x=>`<button type="button" data-ins="${esc(x[1])}" data-tgt="${tgt}">${x[0]} ${esc(x[1])}</button>`).join('')}</div><div style="font-size:11px;color:var(--mute)">名前をタップすると、入力欄に足されます</div>`;
+}
+document.addEventListener('click',e=>{
+  const b=e.target.closest&&e.target.closest('[data-ins]');if(!b)return;
+  const ta=document.querySelector(b.dataset.tgt==='abk'?'[data-abk]':'[data-voice]');if(!ta)return;
+  e.stopPropagation();
+  ta.value=(ta.value.replace(/\s+$/,'')+' '+b.dataset.ins).trim()+' ';
+  ta.dispatchEvent(new Event('input',{bubbles:true}));ta.focus();
+},true);
 function quickBox(){
   const it=parseAssetText(abkText);
   return`<div class="sec">📝 雑に入力して登録</div><div class="list" style="padding:10px 12px">
   <textarea class="area" data-abk="1" rows="4" placeholder="1行に1件、自由に書けます&#10;三井住友銀行 50万円&#10;自動車ローン 180万円 年利3.5% 月4万円&#10;楽天カード 末締め27日払い&#10;固定費 維持費 35000円 毎月27日">${esc(abkText)}</textarea>
-  <div class="info" id="abkprev" style="margin:8px 0">${it.length?it.map(describeAsset).join('<br>'):'書くと、ここに読み取り結果が出ます（銀行・ローン・カード・固定費）'}</div>
+  ${nameChips('abk')}<div class="info" id="abkprev" style="margin:8px 0">${it.length?it.map(describeAsset).join('<br>'):'書くと、ここに読み取り結果が出ます（銀行・ローン・カード・固定費）'}</div>
   <button class="btn" data-a="abk" style="width:100%">登録する</button>
   <div class="scanmsg ${abkMsg&&abkMsg[0]==='!'?'bad':''}" id="abkmsg">${esc((abkMsg||'').replace(/^!/,''))}</div>
   <div style="font-size:11px;color:var(--mute);margin-top:4px">同じ名前は上書きします。カード・ローン・固定費の引き落とし口座は、いちばん上の口座になります（あとで各画面で変えられます）。</div></div>`;
@@ -818,7 +830,7 @@ function fieldHtml(f,v){
   if(f.type==='info')return`<div class="info">${f.html}</div>`;
   if(f.type==='favs')return`<div class="dh" style="margin:0 4px 6px">よく使う（タップで入力）</div><div class="chips">${f.list.map((x,i)=>`<button data-favf="${i}">${esc(catIcon(x.cat))} ${esc(x.memo)}</button>`).join('')}</div>`;
   if(f.type==='emoji')return`<div class="f"><label>${esc(f.label||'アイコン')}</label><button type="button" class="emobtn" data-emok="${f.k}" aria-label="絵文字を選ぶ">${esc(v[f.k]||f.dflt||'🙂')}</button></div>`;
-  if(f.type==='voice')return`<div class="voice"><textarea rows="3" data-voice="1" placeholder="話す・打つ・貼り付け　例：昨日 スーパーで3800円" aria-label="声・文章で入力">${esc((F&&F.voiceText)||'')}</textarea><button class="vb" data-vb="mic" aria-label="音声入力">🎤</button><button class="vb go" data-vb="go">反映</button></div><div class="scanmsg" id="voicemsg"></div>`;
+  if(f.type==='voice')return`<div class="voice"><textarea rows="3" data-voice="1" placeholder="話す・打つ・貼り付け　例：昨日 スーパーで3800円" aria-label="声・文章で入力">${esc((F&&F.voiceText)||'')}</textarea><button class="vb" data-vb="mic" aria-label="音声入力">🎤</button><button class="vb go" data-vb="go">反映</button></div>${nameChips('voice')}<div class="scanmsg" id="voicemsg"></div>`;
   if(f.type==='paychips')return`<div class="dh" style="margin:0 4px 6px">${esc(f.label)}</div><div class="chips">${f.options.map(o=>`<button data-payk="${f.k}" data-v="${esc(o[0])}" class="${v[f.k]===o[0]?'on':''}">${o[0][0]==='c'?'💳':'🏧'} ${esc(o[1].replace('（カード）',''))}</button>`).join('')}</div>`;
   if(f.type==='preview')return`<div class="list"><div class="info" id="bulkprev">${f.html}</div></div>`;
   if(f.type==='area')return`<textarea class="area" data-k="${f.k}" rows="7" placeholder="${esc(f.ph||'')}">${esc(v[f.k]||'')}</textarea>`;
