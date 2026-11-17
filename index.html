@@ -222,9 +222,9 @@ function cardCycle(c){
 }
 function cardInfo(c){
   const m={},t=today();
-  S.txns.forEach(x=>{if(x.type==='expense'&&x.card===c.id){const s=x.bill&&x.payDate?{key:addM(ymOf(x.payDate),-(c.offset==null?1:num(c.offset))),pay:x.payDate}:stmtOf(c,x.date);const e=m[s.key]||(m[s.key]={key:s.key,pay:s.pay,total:0,n:0});e.total+=x.amount;e.n++}});
+  S.txns.forEach(x=>{if(x.type==='expense'&&x.card===c.id){const s=x.bill&&x.payDate?{key:addM(ymOf(x.payDate),-(c.offset==null?1:num(c.offset))),pay:x.payDate}:stmtOf(c,x.date);const e=m[s.key]||(m[s.key]={key:s.key,pay:s.pay,total:0,n:0,self:0});e.total+=x.amount;e.n++;if(x.acc&&x.date<=t)e.self+=x.amount}});
   const st=Object.values(m).sort((a,b)=>a.pay<b.pay?-1:1),up=st.filter(s=>s.pay>t);
-  return{st,unpaid:up.reduce((a,s)=>a+s.total,0),debited:st.filter(s=>s.pay<=t).reduce((a,s)=>a+s.total,0),next:up[0]||null};
+  return{st,unpaid:up.reduce((a,s)=>a+s.total,0),debited:st.filter(s=>s.pay<=t).reduce((a,s)=>a+s.total-(s.self||0),0),next:up[0]||null};
 }
 function accBal(a,withoutOpening){
   const t=today();let b=withoutOpening?0:num(a.opening);
@@ -335,12 +335,12 @@ function linkCardBills(){
     if(!c)return;
     if(!isCardName(x.memo)){const k=nameCore(nm);if(!(k.length>=3&&S.cards.some(z=>nameCore(z.name)===k)))return}
     
-    x.card=c.id;x.bill=true;x.man=true;x.payDate=x.date;x.acc=null;n++;
+    x.card=c.id;x.bill=true;x.man=true;x.payDate=x.date;n++;
   });
   return n>0;
 }
 function gen(){
-  const t=today(),cur=ymOf(t);let ch=syncAuto();if(linkCardBills())ch=true;{const ma=mainAcc();if(ma)S.cards.forEach(c=>{if(!c.acc||!S.accounts.some(a=>a.id===c.acc)){c.acc=ma.id;ch=true}})}
+  const t=today(),cur=ymOf(t);let ch=syncAuto();if(linkCardBills())ch=true;
   const run=(src,kind)=>{
     let m=src.last?addM(src.last,1):(kind==='loan'?ymOf(src.asOf):(src.startYm||cur));
     if(m<addM(cur,-36))m=addM(cur,-36);
@@ -651,6 +651,7 @@ function homeV(){
   if(up.length)h+=`<div class="sec">これからの支払い</div><div class="list">${up.slice(0,4).map(u=>`<div class="li"><span class="ic">${u.i}</span><div class="l"><div class="t">${esc(u.n)}</div><div class="s">${mdLabel(u.d)}</div></div><div class="r">${yen(u.a)}</div></div>`).join('')}</div>`;
   const fv=favs(6);
   if(fv.length)h+=`<div class="sec">よく使う（タップで入力）</div><div class="chips">${fv.map((f,i)=>`<button data-a="fav:${i}">${esc(catIcon(f.cat))} ${esc(f.memo)}</button>`).join('')}</div>`;
+  {const cm=ymOf(t),dd=Number(t.slice(8));if(S.accounts.length&&dd>=dim(cm)-2&&S.balMonth!==cm)h+=`<div class="note">📅 月末です。銀行口座の残高を、銀行アプリの金額に合わせて更新しましょう。<button class="btn" style="margin-top:8px" data-a="tab:assets">資産で残高を更新</button></div>`}
   const lb=(()=>{try{return Number(localStorage.getItem('money-lastbackup'))||0}catch(e){return 0}})();
   if(S.txns.length>=10&&Date.now()-lb>30*86400000)h+=`<div class="note">💾 バックアップは取っていますか？ 設定の「データ」から書き出して、メモアプリなどに保管しておくと安心です。<button class="btn" style="margin-top:8px" data-a="tab:settings">設定を開く</button></div>`;
   const rec=[...S.txns].sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0).slice(0,5);
@@ -772,7 +773,7 @@ function assetsV(){
 const KINDS={income:'給与・収入',card:'カード',loan:'ローン返済',fixed:'固定費',other:'現金・口座'};
 function paymentsOf(m){
   const t=today(),cur=ymOf(t),out=[];
-  S.cards.forEach(c=>cardInfo(c).st.forEach(s=>{if(ymOf(s.pay)===m)out.push({date:s.pay,name:cardPayName(c),sub:Number(s.key.slice(5))+'月締め・'+s.n+'件',kind:'card',amount:s.total,done:s.pay<=t,act:'card:'+c.id,acc:c.acc})}));
+  S.cards.forEach(c=>cardInfo(c).st.forEach(s=>{if(ymOf(s.pay)===m)out.push({date:s.pay,name:cardPayName(c),sub:Number(s.key.slice(5))+'月締め・'+s.n+'件',kind:'card',amount:s.total,done:s.pay<=t,act:'card:'+c.id,acc:c.acc||(mainAcc()||{}).id})}));
   S.txns.forEach(x=>{
     if(ymOf(x.date)!==m)return;
     if(x.type==='income')out.push({date:x.date,name:x.memo||'収入',sub:payName(x)+' に入金',kind:'income',amount:x.amount,done:x.date<=t,act:'txn:'+x.id,acc:x.acc});
@@ -926,7 +927,7 @@ function openTxn(id,mode,tpl){
 }
 function addToBalance(a,delta,memo){
   a.opening=num(a.opening)+delta;
-  a.log=(a.log||[]);a.log.unshift({date:today(),amt:delta,memo:memo||''});a.log=a.log.slice(0,300);
+  S.balMonth=ymOf(today());a.log=(a.log||[]);a.log.unshift({date:today(),amt:delta,memo:memo||''});a.log=a.log.slice(0,300);
 }
 function openBalAdd(id){
   const first=id&&S.accounts.find(a=>a.id===id)||mainAcc();
@@ -951,7 +952,7 @@ function openAcc(id){
     fields:()=>[{k:'icon',type:'emoji',dflt:'🏧'},{k:'name',label:'名前',type:'text',ph:'例：普通預金'},{k:'bal',label:'現在の残高',type:'number',ph:'0'},{k:'main',label:'メイン口座（給与の入金先・引き落としの標準）',type:'check'},...(ex?[{k:'add',label:'残高に追加する金額（マイナスで減らす）',type:'number',ph:'例：50000'}]:[]),...(ex&&(ex.log||[]).length?[{type:'info',html:'最近の追加：'+ex.log.slice(0,3).map(l=>mdLabel(l.date)+' '+(l.amt>0?'+':'−')+yen(Math.abs(l.amt))+(l.memo?'（'+esc(l.memo)+'）':'')).join('、')}]:[]),{type:'info',html:'実際の残高を入れると、以降の取引で増減します。ズレたときはここで合わせ直せます。'}],
     save:v=>{if(!v.name.trim())return'名前を入力してください';
       if(v.main)S.accounts.forEach(a=>{a.main=false});
-      if(ex){ex.name=v.name.trim();ex.icon=v.icon;ex.main=!!v.main;ex.opening=num(v.bal)-accBal(ex,true);if(num(v.add))addToBalance(ex,num(v.add),'')}
+      if(ex){ex.name=v.name.trim();ex.icon=v.icon;ex.main=!!v.main;ex.opening=num(v.bal)-accBal(ex,true);S.balMonth=ymOf(today());if(num(v.add))addToBalance(ex,num(v.add),'')}
       else S.accounts.push({id:uid('a'),name:v.name.trim(),icon:v.icon,main:!!v.main,opening:num(v.bal)})},
     del:ex?()=>{if(S.txns.some(x=>x.acc===ex.id)||S.cards.some(c=>c.acc===ex.id)||S.loans.some(l=>l.acc===ex.id)||S.recs.some(r=>r.acc===ex.id))return'この口座を使った取引や設定があるため削除できません';S.accounts=S.accounts.filter(a=>a.id!==ex.id)}:null});
 }
