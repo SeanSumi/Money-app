@@ -723,7 +723,7 @@ function assetsV(){
   h+=`<div class="sec">口座・現金<button data-a="acc:new">追加</button></div><div class="list">${S.accounts.map(a=>`<button class="li" data-a="acc:${a.id}"><span class="ic">${esc(a.icon||'🏧')}</span><div class="l"><div class="t">${esc(a.name)}${a.main?' <span class="s">（メイン）</span>':''}</div></div><div class="r">${yen(accBal(a))}</div></button>`).join('')}</div><button class="btn" data-a="baladd" style="margin-top:10px;width:100%">＋ 残高に追加（入金・出金）</button>`;
   h+=settledCard();
   h+=depositsCard();
-  h+=`<div class="sec">クレジットカード<button data-a="card:new">追加</button></div>`;
+  h+=`<div class="sec">クレジットカード<span><button data-a="cardbill">＋ 支払い額</button> <button data-a="card:new">追加</button></span></div>`;
   h+=S.cards.length?`<div class="list">${S.cards.map(c=>{const i=cardInfo(c),cy=cardCycle(c);return`<button class="li" data-a="card:${c.id}"><span class="ic">${esc(c.icon||'💳')}</span><div class="l"><div class="t">${esc(c.name)}</div><div class="s">${cardRule(c)}</div><div class="s">次の締め日 ${mdLabel(cy.closeDate)}（${cy.days>0?'あと'+cy.days+'日':'今日'}）・今回の利用 ${yen(cy.use)}</div><div class="s">${i.next?'次回の引き落とし '+mdLabel(i.next.pay)+' '+yen(i.next.total):'引き落とし予定なし'}</div></div><div class="r">${yen(i.unpaid)}<div class="s">未払い</div></div></button>`}).join('')}</div>`:`<div class="note">カードを追加すると、締め日・引き落とし日に合わせて未払い額を自動計算します。</div>`;
   h+=`<div class="sec">ローン<button data-a="loan:new">追加</button></div>`;
   h+=S.loans.length?`<div class="list">${S.loans.map(l=>{const st=loanState(l),p=loanProj(l,st.bal);const sub=p?(p.done?'完済済み 🎉':p.never?'返済額が利息以下です':'完済見込み '+ymLabel(p.end)+'ごろ'):'月々の返済額を設定すると完済日を計算します';return`<button class="li" data-a="loan:${l.id}"><span class="ic">${esc(l.icon||'🏦')}</span><div class="l"><div class="t">${esc(l.name)}</div><div class="s">${esc(sub)}</div></div><div class="r">${yen(st.bal)}</div></button>`}).join('')}</div>`:`<div class="note">ローンを追加すると、返済のたびに元金と利息を分けて残高を減らします。</div>`;
@@ -893,6 +893,18 @@ function openBalAdd(id){
   openForm({title:'残高に追加',vals:{acc:first&&first.id,dir:'in',amount:'',memo:''},
     fields:v=>[{k:'acc',label:'口座',type:'select',options:accOpts()},{k:'dir',type:'seg',label:'種類',options:[['in','入金（増やす）'],['out','出金（減らす）']]},{k:'amount',label:'金額',type:'number',ph:'0'},{k:'memo',label:'メモ（任意）',type:'text',ph:'例：ATM入金'},{type:'info',html:'いまの残金に足し引きします。取引としては記録されないので、収支の集計には入りません。'}],
     save:v=>{const a=S.accounts.find(x=>x.id===v.acc);if(!a)return'口座を選んでください';const n=num(v.amount);if(!(n>0))return'金額を入力してください';addToBalance(a,v.dir==='out'?-n:n,v.memo)}});
+}
+function openCardBill(id){
+  const c0=id&&S.cards.find(x=>x.id===id)||S.cards[0];
+  if(!c0){openForm({title:'カードがありません',vals:{},fields:()=>[{type:'info',html:'先にカードを追加してください。'}],save:()=>'先にカードを追加してください'});return}
+  const dflt=c=>{const i=cardInfo(c);return i.next?i.next.pay:cardCycle(c).pay};
+  openForm({title:'カードの支払い額を追加',vals:{card:c0.id,pay:dflt(c0),amount:'',memo:'',_c:c0.id},
+    fields:v=>{if(v.card!==v._c){const c=S.cards.find(x=>x.id===v.card);if(c)v.pay=dflt(c);v._c=v.card}
+      return[{k:'card',label:'カード',type:'select',options:S.cards.map(c=>[c.id,c.name])},{k:'pay',label:'引き落とし日',type:'date'},{k:'amount',label:'支払い額',type:'number',ph:'0'},{k:'memo',label:'メモ（任意）',type:'text',ph:'例：10月分'},{type:'info',html:'この引き落とし日の請求額として、カードの未払いに加えます。締め日・引き落とし日は、カードの設定から自動で判定します。'}]},
+    save:v=>{const c=S.cards.find(x=>x.id===v.card);if(!c)return'カードを選んでください';const n=num(v.amount);if(!(n>0))return'支払い額を入力してください';if(!v.pay)return'引き落とし日を入れてください';
+      const off=c.offset==null?1:num(c.offset),key=addM(ymOf(v.pay),-off),close=num(c.closing);
+      let d=dayStr(key,close===0?31:close);const t=today();if(stmtOf(c,t).key===key&&d>t)d=t;
+      S.txns.push({id:uid('t'),date:d,type:'expense',amount:n,memo:(v.memo||c.name+' 支払い額'),tags:[],cat:(S.cats.find(x=>x.name==='その他')||S.cats[S.cats.length-1]||{}).id||null,acc:null,card:c.id,man:true})}});
 }
 function openAcc(id){
   const ex=id&&S.accounts.find(a=>a.id===id);
@@ -1481,6 +1493,7 @@ document.addEventListener('click',e=>{
     abkText='';abkMsg=n+'件を登録・変更しました'+(bad?'（読み取れない'+bad+'行は反映していません）':'')+(abkWarn.length?'　'+abkWarn.join('／'):'')+(lastSync?'　（今月以降の自動記録 '+lastSync+'件も更新しました）':'');tab='assets';save();render();window.scrollTo(0,0)}
   else if(a==='apie'){apie=arg;render()}
   else if(a==='baladd'){openBalAdd()}
+  else if(a==='cardbill'){openCardBill()}
   else if(a==='payday'){openRec(null,{type:'income',name:'給与',day:10,pay:mainAcc()?'a:'+mainAcc().id:''})}
   else if(a==='cf'){cf=arg||'';render()}
   else if(a==='fav'){const f=favs(6)[Number(arg)];if(f)openTxn(null,'manual',favTpl(f))}
@@ -1515,7 +1528,7 @@ document.addEventListener('change',e=>{
   const el=e.target;
   if(el.dataset.chscan!=null){const fs=Array.from(el.files||[]);el.value='';if(!fs.length)return;closeForm();openTxn(null,'photo');handleScan(fs);return}
   if(el.dataset.scan){handleScan(el.files);el.value='';return}
-  if(F&&el.dataset.k){F.vals[el.dataset.k]=el.type==='checkbox'?el.checked:el.value;if(el.dataset.k==='cat')renderSheet();return}
+  if(F&&el.dataset.k){F.vals[el.dataset.k]=el.type==='checkbox'?el.checked:el.value;if(el.dataset.k==='cat'||(F.title==='カードの支払い額を追加'&&el.dataset.k==='card'))renderSheet();return}
   if(!F&&el.dataset.tagname!=null){
     const old=el.dataset.tagname,nw=parseTags(el.value)[0];
     if(nw&&nw!==old){const fix=a=>{if(!a||!a.includes(old))return a;const r=a.map(t=>t===old?nw:t);return r.filter((t,i)=>r.indexOf(t)===i)};S.txns.forEach(x=>{x.tags=fix(x.tags)});S.recs.forEach(r=>{r.tags=fix(r.tags)});if(tf===old)tf=nw;save()}
