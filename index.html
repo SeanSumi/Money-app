@@ -222,7 +222,7 @@ function cardCycle(c){
 }
 function cardInfo(c){
   const m={},t=today();
-  S.txns.forEach(x=>{if(x.type==='expense'&&x.card===c.id&&x.date<=t){const s=stmtOf(c,x.date);const e=m[s.key]||(m[s.key]={key:s.key,pay:s.pay,total:0,n:0});e.total+=x.amount;e.n++}});
+  S.txns.forEach(x=>{if(x.type==='expense'&&x.card===c.id&&(x.date<=t||x.bill)){const s=stmtOf(c,x.date);const e=m[s.key]||(m[s.key]={key:s.key,pay:s.pay,total:0,n:0});e.total+=x.amount;e.n++}});
   const st=Object.values(m).sort((a,b)=>a.pay<b.pay?-1:1),up=st.filter(s=>s.pay>t);
   return{st,unpaid:up.reduce((a,s)=>a+s.total,0),debited:st.filter(s=>s.pay<=t).reduce((a,s)=>a+s.total,0),next:up[0]||null};
 }
@@ -929,8 +929,8 @@ function openCardBill(id){
       return[{k:'card',label:'カード',type:'select',options:S.cards.map(c=>[c.id,c.name])},{k:'pay',label:'引き落とし日',type:'date'},{k:'amount',label:'支払い額',type:'number',ph:'0'},{k:'memo',label:'メモ（任意）',type:'text',ph:'例：10月分'},{type:'info',html:'この引き落とし日の請求額として、カードの未払いに加えます。締め日・引き落とし日は、カードの設定から自動で判定します。'}]},
     save:v=>{const c=S.cards.find(x=>x.id===v.card);if(!c)return'カードを選んでください';const n=num(v.amount);if(!(n>0))return'支払い額を入力してください';if(!v.pay)return'引き落とし日を入れてください';
       const off=c.offset==null?1:num(c.offset),key=addM(ymOf(v.pay),-off),close=num(c.closing);
-      let d=dayStr(key,close===0?31:close);const t=today();if(stmtOf(c,t).key===key&&d>t)d=t;
-      S.txns.push({id:uid('t'),date:d,type:'expense',amount:n,memo:(v.memo||c.name+' 支払い額'),tags:[],cat:(S.cats.find(x=>x.name==='その他')||S.cats[S.cats.length-1]||{}).id||null,acc:null,card:c.id,man:true})}});
+      let d=dayStr(key,close===0?31:close);
+      S.txns.push({id:uid('t'),date:d,type:'expense',amount:n,memo:(v.memo||c.name+' 支払い額'),tags:[],cat:(S.cats.find(x=>x.name==='その他')||S.cats[S.cats.length-1]||{}).id||null,acc:null,card:c.id,man:true,bill:true})}});
 }
 function openAcc(id){
   const ex=id&&S.accounts.find(a=>a.id===id);
