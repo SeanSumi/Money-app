@@ -346,15 +346,29 @@ function gen(){
 }
 
 /* ===== 保存 ===== */
-let doc=null,saveT=null;
+let doc=null,saveT=null,pendSave=false;
 function setStatus(t){const e=$('#status');if(e)e.textContent=({cloud:'☁︎ 保存済み（あなた専用の領域）',local:'この端末のブラウザにのみ保存',err:'⚠︎ クラウド保存に失敗（端末内には保存済み）',load:'読み込み中…'})[t]||'';window.__st=t}
 function save(){
-  clearTimeout(saveT);
+  clearTimeout(saveT);pendSave=true;
   saveT=setTimeout(async()=>{
-    try{localStorage.setItem(LS,JSON.stringify(S))}catch(e){}
+    try{localStorage.setItem(LS,JSON.stringify(S))}catch(e){}pendSave=false;
     if(doc){try{await doc.set(JSON.parse(JSON.stringify(S)));setStatus('cloud')}catch(e){setStatus('err')}}
   },400);
 }
+function flushSave(){if(!pendSave)return;clearTimeout(saveT);saveT=0;pendSave=false;try{localStorage.setItem(LS,JSON.stringify(S))}catch(e){}}
+function reloadFromStore(){
+  if(F||pendSave)return;
+  try{
+    const t=localStorage.getItem(LS);if(!t||t===JSON.stringify(S))return;
+    const d=JSON.parse(t);if(!d||d.v!==2)return;
+    if(!d.accounts)d.accounts=[];['cards','loans','recs','txns'].forEach(k=>{if(!d[k])d[k]=[]});if(!d.budgets)d.budgets={};
+    S=d;render();
+  }catch(e){}
+}
+window.addEventListener('storage',e=>{if(e.key===LS)reloadFromStore()});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)flushSave();else reloadFromStore()});
+window.addEventListener('pagehide',flushSave);
+window.addEventListener('focus',reloadFromStore);
 function readSnap(s){if(!s)return null;try{const ex=typeof s.exists==='function'?s.exists():s.exists;if(ex===false)return null;return typeof s.data==='function'?s.data():s}catch(e){return null}}
 async function initStore(){
   try{if(window.claude&&claude.use)claude.use('sample').then(x=>{AI.sample=x}).catch(()=>{})}catch(e){}
