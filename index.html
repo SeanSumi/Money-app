@@ -822,7 +822,7 @@ function payV(){
   let h=head('収支')+`<div class="mnav"><button class="ib" data-a="mon:-1" aria-label="前の月">‹</button><b>${ymLabel(mon)}</b><button class="ib" data-a="mon:1" aria-label="次の月">›</button></div>
   <div class="hero"><div class="lab">収入 − 支払い（手元に残る額）</div><div class="big ${diff<0?'neg':''}">${yen(diff)}</div>
   <div class="cols"><div><span>収入</span><b class="pos">${yen(income)}</b></div><div><span>支払い合計</span><b>${yen(payTotal)}</b></div><div><span>うち予定</span><b>${yen(payPlan)}</b></div></div></div>
-  ${fcCard(true)}
+  
   <div class="sec">種類別</div><div class="list"><div class="li"><span>${KICON.income} ${KINDS.income}</span><b class="pos">+${yen(income).replace('-','')}</b></div>${['card','loan','fixed','other'].map(k=>{const a=sum(pays.filter(p=>p.kind===k));return`<div class="li"><span>${KICON[k]} ${KINDS[k]}</span><span><b>${yen(a)}</b> <span class="s">${payTotal?Math.round(a/payTotal*100):0}%</span></span></div>`}).join('')}</div>
   <div class="sec">一覧</div>
   <div class="seg sc">${[['all','すべて'],['income','収入'],['card','カード'],['loan','ローン'],['fixed','固定費'],['other','現金']].map(o=>`<button data-a="pf:${o[0]}" class="${pf===o[0]?'on':''}">${o[1]}</button>`).join('')}</div>`;
