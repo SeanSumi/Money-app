@@ -342,6 +342,13 @@ function syncAuto(){
   lastSync=n;return n>0;
 }
 function linkCardBills(){
+  /* カード払いで「○○カード支払い」「引き落とし」などと入れた記録は、日付を引き落とし日として扱う */
+  S.txns.forEach(x=>{
+    if(x.type!=='expense'||!x.card||x.bill||x.src||!x.memo)return;
+    const c=S.cards.find(z=>z.id===x.card);if(!c)return;
+    const looks=/支払|引き?落|引落|請求|代金/.test(x.memo)||nameCore(x.memo)===nameCore(c.name);
+    if(looks){x.bill=true;x.man=true;x.payDate=x.date}
+  });
   /* 「ANAカード支払い」のように口座から引き落とす形で入れた記録を、カードの請求額に紐づける（カレンダー・未払いに揃う） */
   let n=0;
   S.txns.forEach(x=>{
