@@ -407,6 +407,7 @@ function reloadFromStore(){
 window.addEventListener('storage',e=>{if(e.key===LS)reloadFromStore()});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)flushSave();else reloadFromStore()});
 window.addEventListener('pagehide',flushSave);
+window.addEventListener('online',()=>{try{render()}catch(e){}});window.addEventListener('offline',()=>{try{render()}catch(e){}});
 window.addEventListener('focus',reloadFromStore);
 function readSnap(s){if(!s)return null;try{const ex=typeof s.exists==='function'?s.exists():s.exists;if(ex===false)return null;return typeof s.data==='function'?s.data():s}catch(e){return null}}
 async function initStore(){
@@ -659,7 +660,8 @@ function render(){
   $('#fab').style.display='';
   $('#view').innerHTML=deco(({home:homeV,txns:txnsV,pay:payV,budget:budgetV,assets:assetsV,settings:settingsV,chart:chartV,cal:calV,achart:achartV,nw:nwV})[tab]());
 }
-const head=(t,sub)=>`<div class="title"><h1>${t}</h1><div class="rt"><small>${sub||''}</small>${tab==='settings'?'':'<button class="gear" data-a="tab:settings" aria-label="設定">⚙︎</button>'}</div></div>`;
+const offBar=()=>navigator.onLine===false?`<div class="note" style="margin:0 0 10px">📴 オフラインです。入力・編集・確認はそのまま使えます（保存はこのiPhoneの中）。写真の読み取りだけは電波が必要です。</div>`:'';
+const head=(t,sub)=>offBar()+`<div class="title"><h1>${t}</h1><div class="rt"><small>${sub||''}</small>${tab==='settings'?'':'<button class="gear" data-a="tab:settings" aria-label="設定">⚙︎</button>'}</div></div>`;
 
 function onboarding(){
   return head('マネー管理')+`<div class="empty"><div style="font-size:40px">👛</div><h3 style="margin:6px 0">はじめましょう</h3>
@@ -1553,6 +1555,7 @@ async function aiExtract(blobs){
 }
 async function handleScan(files){
   if(scanning||!files||!files.length)return;
+  if(navigator.onLine===false){scanMsg('オフラインのため、写真・PDFの読み取りは使えません。電波のある場所で試すか、金額を手で入力してください。',1);return}
   scanning=true;scanMsg('読み取り中…（数十秒かかることがあります）');
   try{
     let blobs=[];for(const f of Array.from(files).slice(0,6))blobs=blobs.concat(await fileToBlobs(f));
