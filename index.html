@@ -450,6 +450,7 @@ const shortYen=n=>n>=10000?(Math.round(n/1000)/10)+'万':String(n);
 function calV(){
   if(!S.accounts.length)return onboarding();
   const pays=paymentsOf(mon),byD={};
+  {const ma=mainAcc();if(ma)pays.forEach(p=>{if(!p.acc&&p.kind!=='income')p.acc=ma.id})}
   S.txns.forEach(x=>{if(ymOf(x.date)===mon&&x.type==='expense'){(byD[x.date]=byD[x.date]||{ex:0,mk:new Set()}).ex+=x.amount}});
   pays.forEach(p=>{if(p.kind!=='income'&&p.acc){(byD[p.date]=byD[p.date]||{ex:0,mk:new Set()}).out=((byD[p.date]||{}).out||0)+p.amount}if(p.kind==='income'||p.kind==='card'||p.kind==='loan'||(p.kind==='fixed'&&!p.done)){(byD[p.date]=byD[p.date]||{ex:0,mk:new Set()}).mk.add(p.kind==='income'?'💰':p.kind==='card'?'💳':p.kind==='loan'?'🏦':'📌')}});
   const t=today();
