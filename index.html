@@ -356,7 +356,7 @@ function linkCardBills(){
     const nm=String(x.memo).replace(/支払い?|引き?落とし?|引落|請求額?|代金|利用額?|分/g,'');
     let c=fuzzyFind(S.cards,nm);
     if(!c)return;
-    if(!isCardName(x.memo)){const k=nameCore(nm);if(!(k.length>=3&&S.cards.some(z=>nameCore(z.name)===k)))return}
+    if(!isCardName(x.memo)){const k=nameCore(nm),ck=nameCore(c.name);const at=k.indexOf(ck);if(!(ck.length>=3&&at>=0&&!(/[a-z]/.test(ck[0])&&at>0&&/[a-z]/.test(k[at-1]))&&!(/[a-z]/.test(ck[ck.length-1])&&/[a-z]/.test(k[at+ck.length]||''))))return}
     
     x.card=c.id;x.bill=true;x.man=true;x.payDate=x.date;n++;
   });
