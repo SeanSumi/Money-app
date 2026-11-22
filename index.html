@@ -204,7 +204,7 @@ const WD=['日','月','火','水','木','金','土'];
 const dLabel=d=>{const[y,m,dd]=d.split('-').map(Number);return m+'月'+dd+'日（'+WD[new Date(y,m-1,dd).getDay()]+'）'};
 
 function empty(){return{v:2,accounts:[],cards:[],loans:[],recs:[],txns:[],budgets:{},
-  cats:[{id:'e1',name:'住居'},{id:'e2',name:'食費'},{id:'e3',name:'光熱・通信'},{id:'e4',name:'交通'},{id:'e5',name:'日用品'},{id:'e6',name:'娯楽・交際'},{id:'e8',name:'維持費',icon:'🔧'},{id:'e7',name:'その他'}],mig8:1}}
+  cats:[{id:'e1',name:'住居'},{id:'e2',name:'食費'},{id:'e3',name:'光熱・通信'},{id:'e4',name:'交通'},{id:'e5',name:'日用品'},{id:'e6',name:'娯楽・交際'},{id:'e8',name:'維持費',icon:'🔧'},{id:'e9',name:'カード引き落とし',icon:'💳'},{id:'e10',name:'ローン返済',icon:'🏦'},{id:'e7',name:'その他'}],mig8:1,mig10:1}}
 let S=empty(),tab='home',mon=ymOf(today()),F=null,pf='all',tf='';
 
 /* ===== 計算 ===== */
@@ -363,7 +363,7 @@ function linkCardBills(){
   return n>0;
 }
 function gen(){
-  const t=today(),cur=ymOf(t);let ch=syncAuto();if(linkCardBills())ch=true;
+  const t=today(),cur=ymOf(t);let ch=syncAuto();if(linkCardBills())ch=true;if(fixPayCats())ch=true;
   if(S.mig9!==1&&S.accounts){S.accounts.forEach(a=>{a.conf=accBal(a);a.confDate=t});S.stlYm=Number(t.slice(8))>=dim(cur)?cur:addM(cur,-1);S.mig9=1;ch=true}
   {const st=stlTarget();if(st&&!st.rows.length){S.stlYm=st.M;ch=true}}
   const run=(src,kind)=>{
@@ -430,10 +430,31 @@ async function initStore(){
 }
 
 /* ===== 画面 ===== */
+const BILL_RE=/支払|引き?落|引落|請求|代金/;
+const cardCatId=()=>(S.cats.find(c=>c.id==='e9')||S.cats.find(c=>c.name==='カード引き落とし')||{}).id||null;
+const loanCatId=()=>(S.cats.find(c=>c.id==='e10')||S.cats.find(c=>c.name==='ローン返済')||{}).id||null;
+const otherCatId=()=>(S.cats.find(c=>c.name==='その他')||{}).id||null;
+/* 「その他」や未設定になっているカード・ローンの支払いに、正しいカテゴリを付ける */
+function fixPayCats(){
+  const oc=otherCatId(),cc=cardCatId(),lc=loanCatId();let n=0;
+  S.txns.forEach(x=>{
+    if(x.type!=='expense'||(x.cat&&x.cat!==oc)||x.catSet)return;
+    const m=String(x.memo||''),an=(S.accounts.find(a=>a.id===x.acc)||{}).name;
+    let c=null;
+    if(x.bill||(isCardName(m)&&(BILL_RE.test(m)||!x.card)))c=cc;
+    else if(isLoanName(m)||isLoanName(an))c=lc;
+    if(c&&x.cat!==c){x.cat=c;n++}
+  });
+  return n>0;
+}
 function ensureCats(){
-  if(S.mig8)return;S.mig8=1;
-  if(!S.cats.some(c=>c.name==='維持費'))S.cats.splice(Math.max(0,S.cats.length-1),0,{id:'e8',name:'維持費',icon:'🔧'});
-  save();
+  let ch=false;
+  if(!S.mig8){S.mig8=1;ch=true;if(!S.cats.some(c=>c.name==='維持費'))S.cats.splice(Math.max(0,S.cats.length-1),0,{id:'e8',name:'維持費',icon:'🔧'})}
+  if(!S.mig10){S.mig10=1;ch=true;const at=()=>Math.max(0,S.cats.findIndex(c=>c.name==='その他')>=0?S.cats.findIndex(c=>c.name==='その他'):S.cats.length);
+    if(!cardCatId())S.cats.splice(at(),0,{id:'e9',name:'カード引き落とし',icon:'💳'});
+    if(!loanCatId())S.cats.splice(at(),0,{id:'e10',name:'ローン返済',icon:'🏦'});}
+  if(fixPayCats())ch=true;
+  if(ch)save();
 }
 const PIEC=['#2f6fed','#5fa0ff','#1fb5a8','#f5a524','#e5566d','#8b6cf0','#41c27a','#e07b39','#4cc9f0','#9aa7bd'];
 function catTotals(m){const o={};S.txns.forEach(x=>{if(x.type==='expense'&&ymOf(x.date)===m)o[x.cat]=(o[x.cat]||0)+x.amount});return o}
@@ -956,7 +977,7 @@ function openTxn(id,mode,tpl){
       if(v.type==='expense'&&v.cat==='__new'){const nm=(v.newcat||'').trim();if(!nm)return'カテゴリ名を入力してください';const nc={id:uid('e'),name:nm,icon:(v.newicon||'').trim()||'🏷️'};S.cats.push(nc);v.cat=nc.id}
       const o={id:ex?ex.id:uid('t'),date:v.date,type:v.type,amount:amt,memo:v.memo.trim(),tags:v.type==='loanpay'?[]:parseTags(v.tags),cat:v.type==='expense'?v.cat:null,loan:v.type==='loanpay'?v.loan:null,
         acc:v.pay[0]==='a'?v.pay.slice(2):null,card:v.pay[0]==='c'&&v.type==='expense'?v.pay.slice(2):null};
-      if(ex){Object.assign(ex,o);if(ex.src)ex.man=true}else S.txns.push(o);
+      if(ex){if(o.cat&&o.cat!==ex.cat)o.catSet=true;Object.assign(ex,o);if(ex.src)ex.man=true}else S.txns.push(o);
     },
     del:ex?()=>{S.txns=S.txns.filter(x=>x.id!==ex.id)}:null});
   if(!ex&&(!mode||mode==='manual'))setTimeout(()=>{try{const a=document.querySelector('[data-k="amount"]');a&&a.focus&&a.focus()}catch(e){}},200);
@@ -979,7 +1000,7 @@ function openCardBill(id){
     fields:v=>{if(v.card!==v._c){const c=S.cards.find(x=>x.id===v.card);if(c)v.pay=dflt(c);v._c=v.card}
       return[{k:'card',label:'カード',type:'select',options:S.cards.map(c=>[c.id,c.name])},{k:'pay',label:'引き落とし日',type:'date'},{k:'amount',label:'支払い額',type:'number',ph:'0'},{k:'memo',label:'メモ（任意）',type:'text',ph:'例：10月分'},{type:'info',html:'この引き落とし日の請求額として、カードの未払いに加えます。締め日・引き落とし日は、カードの設定から自動で判定します。'}]},
     save:v=>{const c=S.cards.find(x=>x.id===v.card);if(!c)return'カードを選んでください';const n=num(v.amount);if(!(n>0))return'支払い額を入力してください';if(!v.pay)return'引き落とし日を入れてください';
-      S.txns.push({id:uid('t'),date:v.pay,payDate:v.pay,type:'expense',amount:n,memo:(v.memo||c.name+' 支払い額'),tags:[],cat:(S.cats.find(x=>x.name==='その他')||S.cats[S.cats.length-1]||{}).id||null,acc:null,card:c.id,man:true,bill:true})}});
+      S.txns.push({id:uid('t'),date:v.pay,payDate:v.pay,type:'expense',amount:n,memo:(v.memo||c.name+' 支払い額'),tags:[],cat:cardCatId()||otherCatId(),acc:null,card:c.id,man:true,bill:true})}});
 }
 function openAcc(id){
   const ex=id&&S.accounts.find(a=>a.id===id);
@@ -1381,6 +1402,8 @@ function voiceCat(text){
   const fb=(S.cats.find(c=>c.name==='その他')||S.cats[S.cats.length-1]||{}).id||null;
   const direct=S.cats.find(c=>text.includes(c.name));if(direct)return direct.id;
   for(const[nm,re]of KW){if(re.test(text)){const c=S.cats.find(x=>x.name===nm);if(c)return c.id}}
+  if(isCardName(text)&&BILL_RE.test(text)&&cardCatId())return cardCatId();
+  if(isLoanName(text)&&loanCatId())return loanCatId();
   return fb;
 }
 function parseVoiceSeg(seg,dflt){
