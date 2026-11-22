@@ -709,6 +709,7 @@ function txnsV(){
   h+=`<div class="list"><div class="f"><span>🔍</span><input type="search" enterkeyhint="search" data-q="1" value="${esc(q)}" placeholder="メモ・カテゴリ・タグ・金額で検索" aria-label="検索"></div></div>`;
   h+=`<div class="seg sc"><button data-a="allp:0" class="${allp?'':'on'}">月ごと</button><button data-a="allp:1" class="${allp?'on':''}">全期間</button><button data-a="srt:date" class="${srt==='date'?'on':''}">日付順</button><button data-a="srt:big" class="${srt==='big'?'on':''}">金額が大きい順</button><button data-a="srt:small" class="${srt==='small'?'on':''}">金額が小さい順</button></div>`;
   h+=`<button class="btn" data-a="tab:chart" style="margin:0 0 10px">🥧 月ごとの比較（円グラフ）</button>`;
+  h+=`<details style="margin:0 0 10px"><summary class="btn" style="display:block;text-align:center;list-style:none">📝 登録した取引を文章で直す</summary><div class="info" style="margin-top:6px">例：「12/10 ANA を カード支払いに変更」「ランチ 1200円 を 交通に変更」「12/10 600000円 を 削除」。日付・金額・メモの一部で探して、あいまいな言い方でも直せます。</div>${quickBox()}</details>`;
   if(!allp)h+=`<div class="mnav"><button class="ib" data-a="mon:-1" aria-label="前の月">‹</button><b>${ymLabel(mon)}</b><button class="ib" data-a="mon:1" aria-label="次の月">›</button></div>`;
   let list=S.txns.concat(tf?[]:adjRows()).filter(x=>(allp||ymOf(x.date)===mon)&&(!tf||(x.tags||[]).includes(tf))&&(!q||txnText(x).includes(q.toLowerCase().replace(/\s+/g,'')))&&(!cf||(cf==='income'?x.type==='income':cf==='loanpay'?x.type==='loanpay':cf==='adjust'?!!x.adj:(x.type==='expense'&&x.cat===cf))));
   const sm=t=>list.filter(x=>x.type===t).reduce((a,x)=>a+x.amount,0);
@@ -1073,7 +1074,62 @@ function stripAcc(txt){
     return !S.accounts.some(a=>{const c=nameCore(a.name);return c===k||(k.length>=3&&c.includes(k))});
   }).join('').replace(/\s+/g,' ').trim();
 }
+const TSTOP=/カテゴリ|種類|支払い?方法|金額|日付|日にち|メモ|名前|引き?落とし日|の記録|取引|データ/g;
+function catFromWords(t){
+  const d=S.cats.find(c=>t.includes(c.name));if(d)return d.id;
+  for(const[nm,re]of KW){if(re.test(t)){const c=S.cats.find(x=>x.name===nm);if(c)return c.id}}
+  return null;
+}
+function parseTxnEdit(line){
+  const raw=String(line).trim();if(!raw||!EDIT_RE.test(raw))return null;
+  let t=normSpeech(raw).replace(/[　]/g,' ').trim();
+  const del=/削除|消して|消す/.test(t);
+  let f,C='';
+  const m=t.match(/^(.+?)\s*(?:を|の|→)\s*(.+?)\s*(?:に|へ)?\s*(?:変更|変えて|変える|変|修正|直して|直す|して|する|なおして)\s*$/);
+  if(m&&!del){f=m[1];C=m[2].replace(/(?:に|へ)\s*$/,'')}
+  else if(del)f=t.replace(/削除(?:して)?|消して|消す|を|の/g,' ');
+  else return null;
+  const ed=extractDate(f);let ff=ed.t||f;
+  let amt=null;{const mm=ff.match(/([\d.,]+\s*万?\s*\d*\s*千?\s*円)/)||ff.match(/(\d+\s*万\s*\d*)/);if(mm){const y=takeYen(mm[1]);if(y.v!==null){amt=y.v;ff=ff.replace(mm[0],' ')}}}
+  if(!ed.date&&amt==null)return null;
+  const toks=ff.replace(TSTOP,' ').split(/[\s、。,]+/).map(nameCore).filter(w=>w.length>=2&&!/^[\d\/\-:.,円日月]+$/.test(w));
+  const hit=S.txns.filter(x=>{
+    if(ed.date&&x.date!==ed.date)return false;if(amt!=null&&x.amount!==amt)return false;
+    if(!toks.length)return true;
+    const hay=nameCore([x.memo,catName(x.cat),(S.cards.find(c=>c.id===x.card)||{}).name,(S.accounts.find(a=>a.id===x.acc)||{}).name].join(' '));
+    return toks.some(w=>hay.includes(w)||(w.length>=3&&nameCore(x.memo||'').length>=2&&w.includes(nameCore(x.memo||''))));
+  }).sort((a,b)=>a.date<b.date?1:-1);
+  if(!hit.length||hit.length>5)return null;
+  const out={kind:'tedit',ids:hit.map(x=>x.id),list:hit.map(x=>mdLabel(x.date)+' '+(x.memo||catName(x.cat))+' '+yen(x.amount)),ch:{},src:raw};
+  if(del){out.op='delete';return out}
+  let u=C;
+  let mm2;if((mm2=u.match(/(?:メモ|名前|名称)\s*(?:を)?\s*(.+)$/))){out.ch.memo=mm2[1].trim();u=u.replace(mm2[0],' ')}
+  const ed2=extractDate(u);if(ed2.date){out.ch.date=ed2.date;u=ed2.t}
+  {const m3=u.match(/([\d.,]+\s*万?\s*\d*\s*千?\s*円)/);if(m3){const y=takeYen(m3[1]);if(y.v!==null){out.ch.amount=y.v;u=u.replace(m3[0],' ')}}}
+  if(/収入|入金/.test(u)&&!/カード/.test(u))out.ch.type='income';else if(/支出/.test(u))out.ch.type='expense';
+  const pm=payMatch(u);
+  if(pm[0])out.ch.pay=pm[0];else if(/カード/.test(u)&&S.cards.length===1)out.ch.pay='c:'+S.cards[0].id;
+  if(out.ch.pay&&out.ch.pay[0]==='c'&&/支払|請求|引き?落|引落/.test(u))out.ch.bill=true;
+  const cat=catFromWords(u);if(cat)out.ch.cat=cat;
+  return Object.keys(out.ch).length?out:null;
+}
+function applyTxnEdits(items){
+  let n=0;
+  items.filter(x=>x.kind==='tedit').forEach(it=>{
+    if(it.op==='delete'){S.txns=S.txns.filter(x=>!it.ids.includes(x.id));n+=it.ids.length;return}
+    S.txns.filter(x=>it.ids.includes(x.id)).forEach(x=>{
+      const c=it.ch;
+      if(c.type)x.type=c.type;if(c.cat&&x.type==='expense')x.cat=c.cat;
+      if(c.date)x.date=c.date;if(c.amount!=null)x.amount=c.amount;if(c.memo)x.memo=c.memo;
+      if(c.pay){if(c.pay[0]==='c'){x.card=c.pay.slice(2);x.acc=null;if(c.bill){x.bill=true}}else{x.acc=c.pay.slice(2);x.card=null;delete x.bill;delete x.payDate}}
+      if(x.bill)x.payDate=x.date;
+      x.man=true;n++;
+    });
+  });
+  return n;
+}
 function parseAssetLine(line){
+  const _t=parseTxnEdit(line);if(_t)return _t;
   const _e=parseEditLine(line);if(_e)return _e;
   const _r=parseAssetLine0(line);if(_r&&_r.kind)_r.src=String(line);return _r;
 }
@@ -1103,6 +1159,14 @@ function parseAssetLine0(line){
   return{kind:'account',name:cleanAssetName(y.t,'口座'),balance:y.v};
 }
 function describeAsset(x){
+  if(x.kind==='tedit'){
+    const c=x.ch,p=[];
+    if(x.op==='delete')return`🗑 取引を削除します：${x.list.map(esc).join('／')}`;
+    if(c.type)p.push(c.type==='income'?'収入に':'支出に');if(c.cat)p.push('カテゴリ→'+esc(catName(c.cat)));
+    if(c.pay){const o=payOpts().find(z=>z[0]===c.pay);p.push('支払い→'+esc(o?o[1].replace('（カード）',''):''))}
+    if(c.bill)p.push('引き落とし日の請求として扱う');if(c.date)p.push('日付→'+mdLabel(c.date));if(c.amount!=null)p.push('金額→'+yen(c.amount));if(c.memo)p.push('メモ→'+esc(c.memo));
+    return`✏️ 取引（${x.list.map(esc).join('／')}）を変更：${p.join('、')}`;
+  }
   if(x.kind==='account')return`🏧 口座「${esc(x.name)}」残高 ${yen(x.balance)}`;
   if(x.kind==='card')return`💳 カード「${esc(x.name)}」${cardRule(x)}${x.guess?'（締め日・支払日は仮。あとで編集）':''}`;
   if(x.kind==='edit'){
@@ -1155,9 +1219,9 @@ function applyEdits(items){
 function applyAssetText(text,accId){
   const norm=x=>String(x).replace(/\s+/g,'').toLowerCase();
       const items=parseAssetText(text).filter(x=>x.kind!=='bad');
-      applyEdits(items);
+      applyEdits(items);applyTxnEdits(items);
       if(!items.length)return'読み取れる行がありません。例のように書いてみてください';
-      if(items.every(x=>x.kind==='edit')){gen();tab='assets';return}
+      if(items.every(x=>x.kind==='edit'||x.kind==='tedit')){gen();tab=items.some(x=>x.kind==='tedit')?'txns':'assets';return}
       const needsAcc=items.some(x=>x.kind==='card'||x.kind==='loan'||x.kind==='fixed');
       if(needsAcc&&!accId&&!S.accounts.length&&!items.some(x=>x.kind==='account'))return'カードやローンには、引き落とし口座が必要です。口座の行も一緒に書いてください';
       items.filter(x=>x.kind==='account').forEach(x=>{
