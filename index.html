@@ -1456,13 +1456,13 @@ function extractDate(t){
   else if((m=t.match(/(^|[^\d\/])(\d{1,2})\/(\d{1,2})(?![\d\/])/))&&num(m[2])>=1&&num(m[2])<=12&&num(m[3])>=1&&num(m[3])<=31){
     const y=now.getFullYear(),mo=num(m[2]),dd=num(m[3]);
     let ds=y+'-'+pad(mo)+'-'+pad(Math.min(dd,dim(y+'-'+pad(mo))));
-    if(ds>rel(31))ds=(y-1)+ds.slice(4);
+    if(ds>rel(270))ds=(y-1)+ds.slice(4);
     date=ds;
   }
   else if((m=t.match(/(?:(\d{4})年)?\s*(\d{1,2})月\s*(\d{1,2})日/))){
     let y=m[1]?num(m[1]):now.getFullYear();const mo=num(m[2]),dd=num(m[3]);
     let ds=y+'-'+pad(mo)+'-'+pad(Math.min(dd,dim(y+'-'+pad(mo))));
-    if(!m[1]&&ds>rel(31))ds=(y-1)+ds.slice(4);
+    if(!m[1]&&ds>rel(270))ds=(y-1)+ds.slice(4);
     date=ds;
   }else if((m=t.match(/(\d{1,2})日(?!間|前)/))){
     const dd=num(m[1]);let ym=ymOf(T);let ds=dayStr(ym,dd);
