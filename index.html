@@ -385,8 +385,20 @@ function linkCardBills(){
   });
   return n>0;
 }
+/* 手で入れたカードの請求は、カードに登録した支払日に合わせる（休日は次の平日） */
+function fixBillDates(){
+  const t=today();let n=0;
+  S.txns.forEach(x=>{
+    if(!x.bill||!x.card||x.dateSet||x.type!=='expense')return;
+    const c=S.cards.find(z=>z.id===x.card);if(!c||!num(c.payDay))return;
+    const cur=x.payDate||x.date;if(cur<t)return;
+    const d=payDayStr(ymOf(cur),num(c.payDay));
+    if(d!==cur){x.payDate=d;x.date=d;n++}
+  });
+  return n>0;
+}
 function gen(){
-  const t=today(),cur=ymOf(t);let ch=syncAuto();if(linkCardBills())ch=true;if(fixPayCats())ch=true;
+  const t=today(),cur=ymOf(t);let ch=syncAuto();if(linkCardBills())ch=true;if(fixPayCats())ch=true;if(fixBillDates())ch=true;
   if(S.mig9!==1&&S.accounts){S.accounts.forEach(a=>{a.conf=accBal(a);a.confDate=t});S.stlYm=Number(t.slice(8))>=dim(cur)?cur:addM(cur,-1);S.mig9=1;ch=true}
   {const st=stlTarget();if(st&&!st.rows.length){S.stlYm=st.M;ch=true}}
   const run=(src,kind)=>{
@@ -1051,7 +1063,7 @@ function openTxn(id,mode,tpl){
       const o={id:ex?ex.id:uid('t'),date:v.date,type:v.type,amount:amt,memo:v.memo.trim(),tags:v.type==='loanpay'?[]:parseTags(v.tags),cat:v.type==='expense'?v.cat:null,loan:v.type==='loanpay'?v.loan:null,
         acc:v.pay[0]==='a'?v.pay.slice(2):null,card:v.pay[0]==='c'&&v.type==='expense'?v.pay.slice(2):null};
       {const L=dupsOf(o);if(L.length&&!v._dupOk){v._dupOk=true;return dupMsg(L)}}
-      if(ex){if(o.cat&&o.cat!==ex.cat)o.catSet=true;Object.assign(ex,o);if(ex.src)ex.man=true}else S.txns.push(o);
+      if(ex){if(o.cat&&o.cat!==ex.cat)o.catSet=true;if(ex.bill&&o.date!==ex.date)o.dateSet=true;Object.assign(ex,o);if(ex.src)ex.man=true}else S.txns.push(o);
     },
     del:ex?()=>{S.txns=S.txns.filter(x=>x.id!==ex.id)}:null});
   if(!ex&&(!mode||mode==='manual'))setTimeout(()=>{try{const a=document.querySelector('[data-k="amount"]');a&&a.focus&&a.focus()}catch(e){}},200);
