@@ -391,7 +391,7 @@ function fixBillDates(){
   S.txns.forEach(x=>{
     if(!x.bill||!x.card||x.dateSet||x.type!=='expense')return;
     const c=S.cards.find(z=>z.id===x.card);if(!c||!num(c.payDay))return;
-    const cur=x.payDate||x.date;if(cur<t)return;
+    const cur=x.payDate||x.date;
     const d=payDayStr(ymOf(cur),num(c.payDay));
     if(d!==cur){x.payDate=d;x.date=d;n++}
   });
