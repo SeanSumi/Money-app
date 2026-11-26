@@ -577,11 +577,12 @@ function calV(){
       const diff=now+pd-cum,row=(l,v,c)=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0"><span class="mute">${l}</span><b${c?` class="${c}"`:''}>${v}</b></div>`;
       return`<div class="list" style="margin-bottom:10px;padding:10px 14px"><div style="font-weight:700;padding-bottom:4px">${esc(a.icon||'🏧')} ${esc(a.name)}</div>
       ${row('現在の残高',yen(now))}
-      ${pd?row('月末に反映予定（反映前の入出金）',(pd<0?'−':'＋')+yen(Math.abs(pd))):''}
+      ${(()=>{const dp=depositsOf().filter(r=>r.acc===id&&r.date<=t&&r.date>(a.confDate||'')&&r.amt>0).reduce((x,r)=>x+r.amt,0);return dp?row('今日までの入金額（月末に反映）','＋'+yen(dp),'pos'):''})()}
+      ${pd?row('月末に反映予定の入出金（差引）',(pd<0?'−':'＋')+yen(Math.abs(pd))):''}
       ${row('この日の支払い額',yen(day))}
       ${fut?row('今日からこの日までの支払い額の合計',yen(cum)):''}
       ${row('残高との比較（'+(fut?'現在の残高 − 支払い額の合計':'現在の残高 − この日の支払い額')+'）',(diff<0?'不足 ':'余り ')+yen(Math.abs(diff)),diff<0?'neg':'pos')}
-      </div>`}).join('')+`<div class="note">給与などの入金は、この比較に含めていません。</div>`;
+      </div>`}).join('')+`<div class="note">今日までに入金された分は、比較に含めています。これから入る予定の入金は含めていません。</div>`;
   }
   {const dep=depositsOf().filter(r=>r.date===calDay);
   if(dep.length)h+=`<div class="sec">この日の入金・追加</div><div class="list">${dep.map(r=>{const a=S.accounts.find(x=>x.id===r.acc)||{name:'口座'};return`<div class="li"><div class="l"><div class="t">${esc(r.label)}</div><div class="s">${esc(a.name)}</div></div><div class="r ${r.amt>0?'pos':''}">${r.amt>0?'+':'−'}${yen(Math.abs(r.amt))}</div></div>`}).join('')}</div>`;}
