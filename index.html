@@ -352,8 +352,9 @@ let lastSync=0;
 function syncAuto(){
   const t=today(),cur=ymOf(t);let n=0;
   S.txns.slice().forEach(x=>{
-    if(!x.src||x.man||ymOf(x.date)<cur)return;
+    if(!x.src||x.man)return;
     const r=S.recs.find(y=>y.id===x.src),l=S.loans.find(y=>y.id===x.src);
+    if(ymOf(x.date)<cur&&!(l&&x.type==='loanpay'))return;
     if(r&&x.type!=='loanpay'){
       const o={type:r.type,amount:num(r.amount),cat:r.cat||null,acc:r.card?null:r.acc,card:r.card||null,memo:r.name,tags:(r.tags||[]).slice(),date:(r.type==='income'?dayStr:payDayStr)(ymOf(x.date),num(r.day)||1,true)};
       if(Object.keys(o).some(k=>JSON.stringify(o[k])!==JSON.stringify(x[k]==null?(k==='card'||k==='acc'||k==='cat'?null:x[k]):x[k]))){Object.assign(x,o);n++}
@@ -398,8 +399,27 @@ function fixBillDates(){
   });
   return n>0;
 }
+/* ローンは、登録した支払日・金額どおりに、毎月1件ずつ記録する（抜けは補い、重なりは1件にする） */
+function fillLoans(){
+  const t=today(),cur=ymOf(t);let ch=false;
+  S.loans.forEach(l=>{
+    if(!(num(l.monthly)>0)||!l.payDay||!l.asOf)return;
+    const m0=ymOf(l.asOf)>addM(cur,-36)?ymOf(l.asOf):addM(cur,-36);
+    for(let m=m0;m<=cur;m=addM(m,1)){
+      const d=payDayStr(m,num(l.payDay)||1,true);if(d<=l.asOf||d>t)continue;
+      const inM=S.txns.filter(x=>x.type==='loanpay'&&x.loan===l.id&&ymOf(x.date)===m);
+      if(inM.length>1){const keep=inM.find(x=>x.man)||inM[0];const rm=inM.filter(x=>x!==keep&&!x.man);if(rm.length){S.txns=S.txns.filter(x=>!rm.includes(x));ch=true}}
+      if(inM.length)continue;
+      const dupMan=S.txns.some(x=>x.type==='expense'&&num(x.amount)===num(l.monthly)&&Math.abs(new Date(x.date)-new Date(d))<=3*864e5&&(isLoanName(x.memo)||nameCore(x.memo||'').includes(nameCore(l.name))));
+      if(dupMan)continue;
+      S.txns.push({id:uid('t'),date:d,type:'loanpay',amount:num(l.monthly),loan:l.id,acc:l.acc,memo:'',src:l.id});ch=true;
+    }
+    const lm=ymOf(t);if(!l.last||l.last<lm){const dd=payDayStr(lm,num(l.payDay)||1,true);l.last=dd<=t?lm:addM(lm,-1);ch=true}
+  });
+  return ch;
+}
 function gen(){
-  const t=today(),cur=ymOf(t);let ch=syncAuto();if(linkCardBills())ch=true;if(fixPayCats())ch=true;if(fixBillDates())ch=true;
+  const t=today(),cur=ymOf(t);let ch=syncAuto();if(fillLoans())ch=true;if(linkCardBills())ch=true;if(fixPayCats())ch=true;if(fixBillDates())ch=true;
   if(S.mig9!==1&&S.accounts){S.accounts.forEach(a=>{a.conf=accBal(a);a.confDate=t});S.stlYm=Number(t.slice(8))>=dim(cur)?cur:addM(cur,-1);S.mig9=1;ch=true}
   {const st=stlTarget();if(st&&!st.rows.length){S.stlYm=st.M;ch=true}}
   const run=(src,kind)=>{
