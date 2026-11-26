@@ -694,24 +694,20 @@ function trendRows(n){
     out.push({ym:m,income,side,exp,diff:income-exp})}
   return out;
 }
-function trendChart(rows){
-  const W=340,H=170,pl=10,pr=10,pt=18,pb=24,vals=rows.flatMap(r=>[r.income,r.exp]),mx=Math.max(...vals,1),mn=0,sp=mx-mn||1;
-  const X=i=>pl+(W-pl-pr)*i/Math.max(1,rows.length-1),Y=v=>pt+(H-pt-pb)*(1-(v-mn)/sp);
-  const path=k=>rows.map((r,i)=>(i?'L':'M')+X(i).toFixed(1)+' '+Y(r[k]).toFixed(1)).join(' ');
-  const dots=(k,c)=>rows.map((r,i)=>`<circle cx="${X(i).toFixed(1)}" cy="${Y(r[k]).toFixed(1)}" r="${i===rows.length-1?4:2.8}" fill="${c}"/>`).join('');
-  const lab=rows.map((r,i)=>(i%2===rows.length%2||rows.length<=6)?`<text x="${X(i).toFixed(1)}" y="${H-7}" font-size="10" text-anchor="middle" fill="var(--mute)">${Number(r.ym.slice(5))}月</text>`:'').join('');
+function trendChart(rows,k,color,label){
+  const W=340,H=150,pl=14,pr=14,pt=22,pb=24,vals=rows.map(r=>r[k]),mx=Math.max(...vals,1),sp=mx||1;
+  const X=i=>pl+(W-pl-pr)*i/Math.max(1,rows.length-1),Y=v=>pt+(H-pt-pb)*(1-v/sp);
+  const path=rows.map((r,i)=>(i?'L':'M')+X(i).toFixed(1)+' '+Y(r[k]).toFixed(1)).join(' ');
   const g=[0,.5,1].map(f=>`<line x1="${pl}" x2="${W-pr}" y1="${Y(mx*f).toFixed(1)}" y2="${Y(mx*f).toFixed(1)}" stroke="var(--line,#e5e7eb)" stroke-width="1"/>`).join('');
-  return`<svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block" role="img" aria-label="毎月の収入と支出の推移">${g}
-  <path d="${path('income')}" fill="none" stroke="#16a34a" stroke-width="2.4" stroke-linejoin="round"/>${dots('income','#16a34a')}
-  <path d="${path('exp')}" fill="none" stroke="var(--acc)" stroke-width="2.4" stroke-linejoin="round"/>${dots('exp','var(--acc)')}
-  ${lab}<text x="${pl}" y="11" font-size="10" fill="var(--mute)">最高 ${yen(mx)}</text></svg>
-  <div style="display:flex;gap:16px;padding:4px 2px;font-size:12px"><span><span style="color:#16a34a">●</span> 収入</span><span><span style="color:var(--acc)">●</span> 支出（カード・ローン・固定費など）</span></div>`;
+  const pts=rows.map((r,i)=>`<circle cx="${X(i).toFixed(1)}" cy="${Y(r[k]).toFixed(1)}" r="4" fill="${color}"/><text x="${X(i).toFixed(1)}" y="${(Y(r[k])-8).toFixed(1)}" font-size="10" text-anchor="${i===0?'start':i===rows.length-1?'end':'middle'}" fill="var(--ink)">${shortYen(r[k])}</text><text x="${X(i).toFixed(1)}" y="${H-7}" font-size="10" text-anchor="${i===0?'start':i===rows.length-1?'end':'middle'}" fill="var(--mute)">${Number(r.ym.slice(5))}月</text>`).join('');
+  return`<div style="font-weight:700;padding:0 2px 4px"><span style="color:${color}">●</span> ${label}</div><svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block" role="img" aria-label="${label}の推移">${g}<path d="${path}" fill="none" stroke="${color}" stroke-width="2.4" stroke-linejoin="round"/>${pts}</svg>`;
 }
 function trendV(){
   if(!S.accounts.length)return onboarding();
-  const rows=trendRows(12),cur=rows[rows.length-1];
+  const rows=trendRows(3),cur=rows[rows.length-1];
   let h=head('毎月の収入と支出')+`<button class="btn" data-a="tab:pay" style="margin-bottom:10px">‹ 収支に戻る</button>
-  <div class="list" style="padding:10px 12px">${trendChart(rows)}</div>
+  <div class="list" style="padding:10px 12px">${trendChart(rows,'income','#16a34a','収入')}</div>
+  <div class="list" style="padding:10px 12px;margin-top:12px">${trendChart(rows,'exp','var(--acc)','支出')}</div>
   <div class="list" style="margin-top:12px">${[...rows].reverse().map(r=>`<button class="li" data-a="trendm:${r.ym}" style="display:block;width:100%"><div style="display:flex;justify-content:space-between"><span>${ymLabel(r.ym)}${r.ym===cur.ym?'（今月・予定込み）':''}</span><b class="${r.diff<0?'neg':'pos'}">${r.diff<0?'−':'＋'}${yen(Math.abs(r.diff))}</b></div><div class="s" style="display:flex;gap:14px;color:var(--mute);font-size:12px"><span>収入 ${yen(r.income)}${r.side?'（うち副業 '+yen(r.side)+'）':''}</span><span>支出 ${yen(r.exp)}</span></div></button>`).join('')}</div>
   <div class="note">収支タブと同じ数字です。カードの買い物は引き落とし日の月に入ります。今月は、これから入る予定の収入と支払いも含みます。月を押すと、その月の収支を開きます。</div>`;
   return h;
@@ -1017,7 +1013,7 @@ function payV(){
   <div class="hero"><div class="lab">収入 − 支払い（手元に残る額）</div><div class="big ${diff<0?'neg':''}">${yen(diff)}</div>
   <div class="cols"><div><span>収入</span><b class="pos">${yen(income)}</b></div><div><span>支払い合計</span><b>${yen(payTotal)}</b></div><div><span>うち予定</span><b>${yen(payPlan)}</b></div></div></div>
   
-  <button class="btn" data-a="tab:trend" style="width:100%;margin:2px 0 4px">📈 毎月の収入・支出（折れ線グラフ）</button>
+  <button class="btn" data-a="tab:trend" style="width:100%;margin:2px 0 4px">📈 毎月の収入・支出</button>
   <div class="sec">種類別</div><div class="list"><div class="li"><span>${KICON.income} 給与・収入（副業以外）</span><b class="pos">+${yen(mainInc).replace('-','')}</b></div><div class="li"><span>${KICON.side} 副業収入</span><b class="pos">+${yen(sideInc).replace('-','')}</b></div>${['card','loan','fixed','other'].map(k=>{const a=sum(pays.filter(p=>p.kind===k));return`<div class="li"><span>${KICON[k]} ${KINDS[k]}</span><span><b>${yen(a)}</b> <span class="s">${payTotal?Math.round(a/payTotal*100):0}%</span></span></div>`}).join('')}</div>
   <div class="sec">一覧</div>
   <div class="seg sc">${[['all','すべて'],['income','収入'],['side','副業'],['card','カード'],['loan','ローン'],['fixed','固定費'],['other','現金']].map(o=>`<button data-a="pf:${o[0]}" class="${pf===o[0]?'on':''}">${o[1]}</button>`).join('')}</div>`;
