@@ -259,17 +259,26 @@ function accBal(a,withoutOpening){
 const shownBal=a=>a.conf!=null?num(a.conf):accBal(a);
 const pendOf=a=>accBal(a)-shownBal(a);
 function setBal(a,v){a.opening=num(v)-accBal(a,true);a.conf=num(v);a.confDate=today()}
+/* 口座の残高は、その月の最後の支払い日の23:59（以降）に、自動で更新する */
+const nowMin=()=>typeof NOW_O==='number'?NOW_O:(()=>{const d=new Date();return d.getHours()*60+d.getMinutes()})();
+let NOW_O=null;
+function lastPayDay(m){
+  const ds=paymentsOf(m).filter(p=>p.kind!=='income'&&p.acc!==undefined).map(p=>p.date).sort();
+  return ds.length?ds[ds.length-1]:dayStr(m,31);
+}
+const stlReady=m=>{const lp=lastPayDay(m),t=today();return t>lp||(t===lp&&nowMin()>=1439)};
 function stlTarget(){
-  const t=today(),cm=ymOf(t),M=Number(t.slice(8))>=dim(cm)?cm:addM(cm,-1);
+  const t=today(),cm=ymOf(t);
+  const M=stlReady(cm)?cm:addM(cm,-1);
   if(S.stlYm&&S.stlYm>=M)return null;
-  const cut=dayStr(M,31);
+  const cut=lastPayDay(M);
   const rows=S.accounts.map(a=>{if(a.confDate&&a.confDate>cut)return null;const o=TODAY_O;TODAY_O=cut;let v;try{v=accBal(a)}finally{TODAY_O=o}return{a,from:shownBal(a),to:v,d:v-shownBal(a)}}).filter(r=>r&&r.d!==0);
   return{M,cut,rows};
 }
-function settle(){const st=stlTarget();if(!st)return;st.rows.forEach(r=>{r.a.conf=r.to;r.a.confDate=st.cut});S.stlYm=st.M}
+function settle(){const st=stlTarget();if(!st)return false;st.rows.forEach(r=>{r.a.conf=r.to;r.a.confDate=st.cut});S.stlYm=st.M;S.stlNote={ym:st.M,cut:st.cut,n:st.rows.length,at:Date.now()};return true}
 function stlCard(){
-  const st=stlTarget();if(!st||!st.rows.length)return'';
-  return`<div class="sec">📅 ${Number(st.M.slice(5))}月末の残高反映</div><div class="list">${st.rows.map(r=>`<div class="li"><span>${esc(r.a.icon||'🏧')} ${esc(r.a.name)}</span><span style="text-align:right"><b>${yen(r.from)} → ${yen(r.to)}</b><div class="s ${r.d<0?'neg':'pos'}">${r.d<0?'−':'＋'}${yen(Math.abs(r.d))}</div></span></div>`).join('')}</div><div class="note">${Number(st.M.slice(5))}月末までの引き落とし・入金を、口座の残高に反映します。内容を確認してから押してください。<button class="btn" data-a="stl" style="margin-top:8px;width:100%">確認して反映する</button></div>`;
+  const n=S.stlNote;if(!n||!n.n||Date.now()-n.at>7*864e5)return'';
+  return`<div class="note" style="margin:0 0 10px">✅ ${Number(n.ym.slice(5))}月分の口座残高を更新しました（${mdLabel(n.cut)} 23:59 時点・${n.n}口座）</div>`;
 }
 function loanState(l){
   let bal=num(l.bal0),pi=0,pp=0;const t=today();
@@ -441,7 +450,7 @@ function fillRecs(){
 function gen(){
   const t=today(),cur=ymOf(t);let ch=syncAuto();if(fillLoans())ch=true;if(fillRecs())ch=true;if(linkCardBills())ch=true;if(fixPayCats())ch=true;if(fixBillDates())ch=true;
   if(S.mig9!==1&&S.accounts){S.accounts.forEach(a=>{a.conf=accBal(a);a.confDate=t});S.stlYm=Number(t.slice(8))>=dim(cur)?cur:addM(cur,-1);S.mig9=1;ch=true}
-  {const st=stlTarget();if(st&&!st.rows.length){S.stlYm=st.M;ch=true}}
+  if(settle())ch=true;
   const run=(src,kind)=>{
     let m=src.last?addM(src.last,1):(kind==='loan'?ymOf(src.asOf):(src.startYm||cur));
     if(m<addM(cur,-36))m=addM(cur,-36);
